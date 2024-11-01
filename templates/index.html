@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa, Visor 3D y Visualizador EPW</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #toolbar {
+            display: flex;
+            align-items: center;
+            height: 50px;
+            background-color: #333;
+            color: white;
+            padding: 0 10px;
+        }
+        #toolbar .icon {
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        #toolbar input[type="file"] {
+            display: none;
+        }
+        #content {
+            display: flex;
+            flex: 1;
+        }
+        #left {
+            width: 30%;
+            display: flex;
+            flex-direction: column;
+        }
+        #map {
+            flex: 1;
+            height: 100%;
+            width: 100%;
+        }
+        #epwViewer {
+            flex: 1;
+            height: 50%;
+            width: 100%;
+            overflow-y: auto;
+            background-color: #f0f0f0;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #right {
+            width: 70%;
+            background-color: white;
+            position: relative;
+        }
+        #viewer {
+            width: 100%;
+            height: 100%;
+        }
+        #solarDiagram {
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        #solarDiagram img {
+            width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toolbar">
+        <label class="icon">
+            &#128193; <!-- Icono de carpeta -->
+            <input type="file" id="fileInput" accept=".obj,.mtl,.stl" multiple />
+        </label>
+        <span>Cargar OBJ, MTL, STL</span>
+    </div>
+
+    <div id="content">
+        <div id="left">
+            <div id="map"></div>
+            <div id="epwViewer">
+                <h2>Diagrama Solar</h2>
+                <div id="solarDiagram">
+                    <img id="solarImage" src="" alt="Diagrama solar" />
+                </div>
+            </div>
+        </div>
+
+        <div id="right">
+            <div id="viewer"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // Crear el mapa y centrarlo en una vista global
+        var map = L.map('map').setView([20, 0], 2);
+
+        // Cargar el mapa base
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Variable para almacenar el marcador actual
+        var marker;
+
+        // Evento de clic en el mapa para agregar un marcador
+        map.on('click', function(e) {
+            // Si ya hay un marcador, eliminarlo
+            if (marker) {
+                map.removeLayer(marker);
+            }
+
+            // Añadir un nuevo marcador en la ubicación del clic
+            marker = L.marker(e.latlng).addTo(map)
+                .bindPopup("Latitud: " + e.latlng.lat.toFixed(4) + ", Longitud: " + e.latlng.lng.toFixed(4))
+                .openPopup();
+
+            // Enviar la latitud al servidor
+            enviarLatitud(e.latlng.lat);
+        });
+
+        // Función para enviar la latitud al servidor
+           // Función para enviar la latitud al servidor
+           function enviarLatitud(latitud) {
+            fetch('/procesar-latitud', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ latitud: latitud }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Respuesta:', data);
+                // Mostrar la imagen del diagrama solar
+                document.getElementById('solarImage').src = '/static/sunpath_diagram.png';
+                // Llamar a la función que actualiza el domo en el visor 3D con los datos de altitudes y azimuts
+                actualizarSkyDome(data.altitudes, data.azimuts);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Configuración del visor 3D
+        var viewer = document.getElementById('viewer');
+        var scene = new THREE.Scene();
+        var camera = new THREE.PerspectiveCamera(75, viewer.clientWidth / viewer.clientHeight, 0.1, 1000);
+
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setClearColor(0xffffff);  // Fondo blanco
+        renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+        viewer.appendChild(renderer.domElement);
+
+        var gridHelper = new THREE.GridHelper(100, 100, new THREE.Color('rgba(0, 0, 139, 1)'), new THREE.Color('rgba(0, 0, 139, 1)'));  // Líneas azul claro transparente
+        scene.add(gridHelper);
+
+        var controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+        controls.enableZoom = true;
+
+        var light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1).normalize();
+        scene.add(light);
+
+        camera.position.z = 5;
+
+        function crearAnillos(altitudes, azimuts) {
+            const colores = [0xADD8E6, 0x800080, 0x008000, 0xFF0000, 0x00008B];  // Colores azul claro, morado, verde, rojo, azul oscuro
+
+// Eliminar puntos anteriores (si existen)
+scene.traverse(function (child) {
+    if (child.isMesh) {
+        scene.remove(child);
+    }
+});
+
+for (let i = 0; i < altitudes.length; i++) {
+    for (let j = 0; j < azimuts[i].length; j++) {
+        const altura = altitudes[i][j]*2;  // Altura del punto (en eje Y)
+        const azimut = azimuts[i][j] * (Math.PI / 180)*2;  // Azimut convertido a radianes
+
+        // Crear la geometría del punto (esfera pequeña)
+        const geometry = new THREE.SphereGeometry(0.5, 16, 16);  // Tamaño de la esfera (punto)
+        const material = new THREE.MeshBasicMaterial({ color: colores[i % colores.length] });
+        const punto = new THREE.Mesh(geometry, material);
+
+        // Calcular la posición del punto en función de la altura y azimut
+        const x = Math.cos(azimut) * altura;
+        const z = Math.sin(azimut) * altura;
+        const y = altura;  // La altura determina la posición en el eje Y
+        // Establecer la posición del punto
+        punto.position.set(x, y, z);
+
+        // Añadir el punto a la escena
+        scene.add(punto);
+    }
+}
+        }
+
+        function actualizarSkyDome(altitudes, azimuts) {
+            crearAnillos(altitudes, azimuts);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+        
+
+        window.addEventListener('resize', function() {
+            camera.aspect = viewer.clientWidth / viewer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+        });
+
+        // Función para cargar un archivo OBJ con MTL
+        function loadOBJWithMTL(objFile, mtlFile) {
+            var mtlLoader = new THREE.MTLLoader();
+            mtlLoader.load(URL.createObjectURL(mtlFile), function(materials) {
+                materials.preload();
+
+                var objLoader = new THREE.OBJLoader();
+                objLoader.setMaterials(materials);
+                objLoader.load(URL.createObjectURL(objFile), function(object) {
+                    scene.add(object);
+                    object.scale.set(1, 1, 1);
+                });
+            });
+        }
+
+        // Función para cargar un archivo OBJ
+        function loadOBJ(objFile) {
+            var objLoader = new THREE.OBJLoader();
+            objLoader.load(URL.createObjectURL(objFile), function(object) {
+                scene.add(object);
+                object.scale.set(1, 1, 1);
+            });
+        }
+
+        // Función para cargar un archivo STL
+        function loadSTL(file) {
+            var loader = new THREE.STLLoader();
+            loader.load(URL.createObjectURL(file), function(geometry) {
+                var material = new THREE.MeshPhongMaterial({ color: 0x999999 });
+                var mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                mesh.scale.set(1, 1, 1);
+            });
+        }
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            var files = event.target.files;
+            var objFile, mtlFile, stlFile;
+
+            for (var i = 0; i < files.length; i++) {
+                if (files[i].name.endsWith('.obj')) {
+                    objFile = files[i];
+                } else if (files[i].name.endsWith('.mtl')) {
+                    mtlFile = files[i];
+                } else if (files[i].name.endsWith('.stl')) {
+                    stlFile = files[i];
+                }
+            }
+
+            if (objFile && mtlFile) {
+                loadOBJWithMTL(objFile, mtlFile);
+            } else if (objFile) {
+                loadOBJ(objFile);
+            }
+
+            if (stlFile) {
+                loadSTL(stlFile);
+            }
+        });
+
+        viewer.addEventListener('dragover', function(event) {
+            event.preventDefault();
+        });
+
+        viewer.addEventListener('drop', function(event) {
+            event.preventDefault();
+
+            var files = event.dataTransfer.files;
+            var objFile, mtlFile, stlFile;
+
+            for (var i = 0; i < files.length; i++) {
+                if (files[i].name.endsWith('.obj')) {
+                    objFile = files[i];
+                } else if (files[i].name.endsWith('.mtl')) {
+                    mtlFile = files[i];
+                } else if (files[i].name.endsWith('.stl')) {
+                    stlFile = files[i];
+                }
+            }
+
+            if (objFile && mtlFile) {
+                loadOBJWithMTL(objFile, mtlFile);
+            } else if (objFile) {
+                loadOBJ(objFile);
+            }
+
+            if (stlFile) {
+                loadSTL(stlFile);
+            }
+        });
+
+    </script>
+
+</body>
+</html>
