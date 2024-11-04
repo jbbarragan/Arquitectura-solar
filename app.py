@@ -129,9 +129,9 @@ def procesar_latitud():
     # Llamada a la función para generar el diagrama solar con la latitud proporcionada y obtener datos
     resultado = generar_diagrama_solar(latitud)
     
-    print(f"Latitud: {latitud}")
-    print("Altitudes:", resultado['altitudes'])
-    print("Azimuts:", resultado['azimuts'])
+   # print(f"Latitud: {latitud}")
+    #print("Altitudes:", resultado['altitudes'])
+    #print("Azimuts:", resultado['azimuts'])
 
     # Devolver los datos calculados al frontend
     return jsonify({

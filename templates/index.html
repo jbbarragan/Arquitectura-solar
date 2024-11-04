@@ -139,25 +139,27 @@
         // Función para enviar la latitud al servidor
            // Función para enviar la latitud al servidor
            function enviarLatitud(latitud) {
-            fetch('/procesar-latitud', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ latitud: latitud }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Respuesta:', data);
-                // Mostrar la imagen del diagrama solar
-                document.getElementById('solarImage').src = '/static/sunpath_diagram.png';
-                // Llamar a la función que actualiza el domo en el visor 3D con los datos de altitudes y azimuts
-                actualizarSkyDome(data.altitudes, data.azimuts);
-            })
-            .catch((error) => {
-                console.error('Error:', error);
-            });
-        }
+    fetch('/procesar-latitud', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ latitud: latitud }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('Respuesta:', data);
+        document.getElementById('solarImage').src = '/static/sunpath_diagram.png';
+        actualizarSkyDome(data.altitudes, data.azimuts);
+
+        // Llamar a crearArco para actualizar el arco según la nueva latitud
+        crearArco(latitud);
+    })
+    .catch((error) => {
+        console.error('Error:', error);
+    });
+}
+
 
         // Configuración del visor 3D
         var viewer = document.getElementById('viewer');
@@ -182,6 +184,97 @@
         scene.add(light);
 
         camera.position.z = 5;
+
+        function crearEsferaConMovimiento(arco1, arco2) {
+    // Crear la esfera y añadirla a la escena
+    const esferaGeometry = new THREE.SphereGeometry(2, 16, 16); // Esfera de radio 2
+    const esferaMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Color verde
+    const esfera = new THREE.Mesh(esferaGeometry, esferaMaterial);
+    scene.add(esfera);
+
+    // Parámetros para controlar el movimiento
+    const radioArco = 60;  // Radio de los arcos
+    let angulo = 0;  // Ángulo inicial
+    let velocidad = 0.02;  // Velocidad del movimiento
+
+    // Función para crear un marcador en la trayectoria
+    function crearMarcador(x, y, z) {
+        const marcadorGeometry = new THREE.SphereGeometry(0.2, 8, 8); // Esfera más pequeña para el marcador
+        const marcadorMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Color rojo para los puntos
+        const marcador = new THREE.Mesh(marcadorGeometry, marcadorMaterial);
+        marcador.position.set(x, y, z);
+        scene.add(marcador);
+    }
+
+    // Función de animación para mover la esfera entre los perímetros de arco1 y arco2
+    function moverEsfera() {
+        // Calcular la posición de la esfera en el perímetro del arco usando el ángulo actual
+        const x = radioArco * Math.cos(angulo);
+        const y = radioArco * Math.sin(angulo);
+
+        // Interpolación entre arco1 y arco2, comenzando en arco1 (0) y variando hasta arco2 (1)
+        const interpolacion = (1 + Math.sin(angulo - Math.PI / 2)) / 2;
+
+        // Interpolar la posición entre los dos arcos
+        const z = THREE.MathUtils.lerp(arco1.position.z, arco2.position.z, interpolacion);
+        esfera.position.set(x, y, z);
+
+        // Crear un marcador en la posición actual de la esfera
+        crearMarcador(x, y, z);
+
+        // Incrementar el ángulo para el siguiente frame
+        angulo += velocidad;
+
+        // Llamar a la función en cada frame
+        requestAnimationFrame(moverEsfera);
+    }
+
+    // Iniciar el movimiento de la esfera
+    moverEsfera();
+}
+
+
+
+        // Función para crear un arco centrado en (0, 0, 0) con altura de 60
+function crearArco(latitud) {
+    // Eliminar el arco previo si ya existe
+    if (scene.getObjectByName('arco')) {
+        scene.remove(scene.getObjectByName('arco'));
+    }
+
+    // Crear la geometría del arco
+    const arcoRadio = 60;
+    const arcoSegmentos = 50;
+    const arcoMaterial = new THREE.LineBasicMaterial({ color: 0xFF5733 }); // Color del arco
+
+    const arcoPuntos = [];
+    for (let i = 0; i <= arcoSegmentos; i++) {
+        const theta = (i / arcoSegmentos) * Math.PI; // Crear arco de 180 grados
+        const x = arcoRadio * Math.cos(theta);
+        const y = arcoRadio * Math.sin(theta);
+        arcoPuntos.push(new THREE.Vector3(x, y, 0));
+    }
+
+    const arcoGeometry = new THREE.BufferGeometry().setFromPoints(arcoPuntos);
+    const arco = new THREE.Line(arcoGeometry, arcoMaterial);
+    const arco1 = new THREE.Line(arcoGeometry, arcoMaterial);
+    const arco2= new THREE.Line(arcoGeometry, arcoMaterial);
+    arco.name = 'arco';
+
+    // Rotar el arco en función de la latitud + 90 grados
+    arco.rotation.x = (latitud) * (Math.PI / 180); // Convertir a radianes
+    arco1.rotation.x = (latitud+23) * (Math.PI / 180); 
+    arco2.rotation.x = (latitud-23) * (Math.PI / 180); 
+    //arco.rotation.z = inclinacion;
+    
+
+    // Agregar el arco a la escena
+    //scene.add(arco);
+    scene.add(arco1);
+    scene.add(arco2);
+    crearEsferaConMovimiento(arco1, arco2);
+}
+
 
         function crearAnillos(altitudes, azimuts) {
             const colores = [0xADD8E6, 0x800080, 0x008000, 0xFF0000, 0x00008B];  // Colores azul claro, morado, verde, rojo, azul oscuro
@@ -217,7 +310,7 @@ for (let i = 0; i < altitudes.length; i++) {
         }
 
         function actualizarSkyDome(altitudes, azimuts) {
-            crearAnillos(altitudes, azimuts);
+           // crearAnillos(altitudes, azimuts);
         }
 
         function animate() {
