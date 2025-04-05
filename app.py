@@ -3,9 +3,11 @@ import numpy as np
 import matplotlib.pylab as plt
 from mpl_toolkits.basemap import Basemap
 import matplotlib.patches as mpatches
+from lectorEPW import lector_epw_bp 
 
 # Crear la aplicación Flask
 app = Flask(__name__)
+app.register_blueprint(lector_epw_bp)
 
 pi = np.pi
 
@@ -94,8 +96,9 @@ def generar_diagrama_solar(L):
     def plot(azimuth, altitude, color):
         azi_list = []
         alt_list = []
+        offset = 0.5 if color in ['bo-', 'co-'] else 0
         for n in range(len(azimuth)):
-            azi, alt = Diagram(azimuth[n], -altitude[n])
+            azi, alt = Diagram(azimuth[n], -(altitude[n] + offset))
             azi_list.append(azi)
             alt_list.append(alt)
         Diagram.plot(azi_list, alt_list, color)
@@ -129,11 +132,6 @@ def procesar_latitud():
     # Llamada a la función para generar el diagrama solar con la latitud proporcionada y obtener datos
     resultado = generar_diagrama_solar(latitud)
     
-   # print(f"Latitud: {latitud}")
-    #print("Altitudes:", resultado['altitudes'])
-    #print("Azimuts:", resultado['azimuts'])
-
-    # Devolver los datos calculados al frontend
     return jsonify({
         'mensaje': 'Diagrama solar generado correctamente',
         'latitud': latitud,

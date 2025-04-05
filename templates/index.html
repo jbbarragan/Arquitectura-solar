@@ -73,6 +73,30 @@
             width: 100%;
             height: auto;
         }
+
+        #searchInput {
+            margin-left: 10px;
+            padding: 5px;
+            border: none;
+            border-radius: 3px;
+        }
+        #searchButton {
+            cursor: pointer;
+            margin-left: 5px;
+            font-size: 20px;
+        }
+        
+        #cargarEpwButton {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        #cargarEpwButton:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -83,13 +107,21 @@
             <input type="file" id="fileInput" accept=".obj,.mtl,.stl" multiple />
         </label>
         <span>Cargar OBJ, MTL, STL</span>
+
+         <!-- Barra de búsqueda -->
+         <input type="text" id="searchInput" placeholder="Buscar dirección...">
+         <span id="searchButton">&#128269;</span> <!-- Ícono de lupa -->
+
+         <button id="rotateButton" style="margin-left: 10px;">Rotar 90°</button>
+         <button id="cargarEpwButton">Cargar EPW</button>
+         <input type="file" id="epwInput" accept=".epw" style="display: none;">
+     
     </div>
 
     <div id="content">
         <div id="left">
             <div id="map"></div>
             <div id="epwViewer">
-                <h2>Diagrama Solar</h2>
                 <div id="solarDiagram">
                     <img id="solarImage" src="" alt="Diagrama solar" />
                 </div>
@@ -110,34 +142,111 @@
 
     <script>
         // Crear el mapa y centrarlo en una vista global
-        var map = L.map('map').setView([20, 0], 2);
 
-        // Cargar el mapa base
+        var map = L.map('map').setView([20, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
-
-        // Variable para almacenar el marcador actual
         var marker;
 
-        // Evento de clic en el mapa para agregar un marcador
+        document.getElementById('cargarEpwButton').addEventListener('click', function() {
+    document.getElementById('epwInput').click();
+});
+
+document.getElementById('epwInput').addEventListener('change', function(event) {
+    if (event.target.files.length > 0) {
+        const epwFile = event.target.files[0];
+        const formData = new FormData();
+        formData.append('file', epwFile);
+
+        fetch('/procesar-epw', {  // Cambiar la ruta a la nueva definida en Flask
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('EPW procesado:', data);
+            alert('Archivo EPW procesado correctamente.');
+        })
+        .catch(error => {
+            console.error('Error al procesar EPW:', error);
+            alert('Hubo un error al procesar el archivo EPW.');
+        });
+    }
+});
+
+
+
+        document.getElementById('rotateButton').addEventListener('click', () => {
+        // Rotar la cámara 90 grados alrededor del eje Y
+        const angle = Math.PI / 2; // 90 grados en radianes
+        camera.rotation.z += angle;
+
+        // Rotar también la cuadrícula si es necesario
+        gridHelper.rotation.z += angle;
+
+        // Ajustar el control de la cámara
+        controls.update();
+    });
+
+
+        // Función de búsqueda de dirección
+        function searchAddress() {
+            var address = document.getElementById('searchInput').value;
+            if (address.trim() === "") {
+                alert("Por favor, ingrese una dirección para buscar.");
+                return;
+            }
+
+            // Realizar la búsqueda con Nominatim
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0) {
+                        var result = data[0];
+                        var latLng = [result.lat, result.lon];
+                        
+                        // Si ya hay un marcador, eliminarlo
+                        if (marker) {
+                            map.removeLayer(marker);
+                        }
+                        
+                        // Añadir un nuevo marcador en la ubicación encontrada
+                        marker = L.marker(latLng).addTo(map)
+                            .bindPopup(result.display_name)
+                            .openPopup();
+                        
+                        // Centrar el mapa en la ubicación encontrada
+                        map.setView(latLng, 15);
+                    } else {
+                        alert("No se encontraron resultados para la dirección especificada.");
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("Hubo un error en la búsqueda. Intente nuevamente.");
+                });
+        }
+        document.getElementById('searchButton').addEventListener('click', searchAddress);
+
+        // Permitir la búsqueda presionando "Enter" en el campo de entrada
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchAddress();
+            }
+
+            
+        });
         map.on('click', function(e) {
-            // Si ya hay un marcador, eliminarlo
             if (marker) {
                 map.removeLayer(marker);
             }
-
-            // Añadir un nuevo marcador en la ubicación del clic
             marker = L.marker(e.latlng).addTo(map)
                 .bindPopup("Latitud: " + e.latlng.lat.toFixed(4) + ", Longitud: " + e.latlng.lng.toFixed(4))
                 .openPopup();
-
-            // Enviar la latitud al servidor
             enviarLatitud(e.latlng.lat);
         });
 
-        // Función para enviar la latitud al servidor
-           // Función para enviar la latitud al servidor
            function enviarLatitud(latitud) {
     fetch('/procesar-latitud', {
         method: 'POST',
@@ -150,16 +259,13 @@
     .then(data => {
         console.log('Respuesta:', data);
         document.getElementById('solarImage').src = '/static/sunpath_diagram.png';
-        actualizarSkyDome(data.altitudes, data.azimuts);
-
-        // Llamar a crearArco para actualizar el arco según la nueva latitud
         crearArco(latitud);
+        inclinarEsfera(latitud);
     })
     .catch((error) => {
         console.error('Error:', error);
     });
 }
-
 
         // Configuración del visor 3D
         var viewer = document.getElementById('viewer');
@@ -171,7 +277,7 @@
         renderer.setSize(viewer.clientWidth, viewer.clientHeight);
         viewer.appendChild(renderer.domElement);
 
-        var gridHelper = new THREE.GridHelper(100, 100, new THREE.Color('rgba(0, 0, 139, 1)'), new THREE.Color('rgba(0, 0, 139, 1)'));  // Líneas azul claro transparente
+        var gridHelper = new THREE.GridHelper(150, 150, new THREE.Color('rgba(0, 0, 139, 1)'), new THREE.Color('rgba(0, 0, 139, 1)'));  // Líneas azul claro transparente
         scene.add(gridHelper);
 
         var controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -184,134 +290,63 @@
         scene.add(light);
 
         camera.position.z = 5;
+        // Llamar a la función después de crear los arcos
+        crearArco(0); // Llama a la función de creación de arcos con latitud inicial
 
-        function crearEsferaConMovimiento(arco1, arco2) {
-    // Crear la esfera y añadirla a la escena
-    const esferaGeometry = new THREE.SphereGeometry(2, 16, 16); // Esfera de radio 2
-    const esferaMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Color verde
-    const esfera = new THREE.Mesh(esferaGeometry, esferaMaterial);
-    scene.add(esfera);
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    function crearArco(latitud) {
+    // Eliminar objeto previo si existe
+    const objetoPrevio = scene.getObjectByName('esfera_recortada');
+    if (objetoPrevio) scene.remove(objetoPrevio);
 
-    // Parámetros para controlar el movimiento
-    const radioArco = 60;  // Radio de los arcos
-    let angulo = 0;  // Ángulo inicial
-    let velocidad = 0.02;  // Velocidad del movimiento
+    const totalTheta = (47 * Math.PI / 180); 
+    const largeTheta = (totalTheta / (5 + (2 / 3) * 2))*2; 
+    const smallTheta = largeTheta / 2; 
+     
+    const material = new THREE.MeshBasicMaterial({ 
+        color: 0x00aaff, 
+        transparent: true, 
+        opacity: 0.5, 
+        wireframe: true 
+    });
 
-    // Función para crear un marcador en la trayectoria
-    function crearMarcador(x, y, z) {
-        const marcadorGeometry = new THREE.SphereGeometry(0.2, 8, 8); // Esfera más pequeña para el marcador
-        const marcadorMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Color rojo para los puntos
-        const marcador = new THREE.Mesh(marcadorGeometry, marcadorMaterial);
-        marcador.position.set(x, y, z);
-        scene.add(marcador);
+    // Grupo para contener todas las partes
+    const arcoGrupo = new THREE.Group();
+    arcoGrupo.name = 'esfera_recortada';
+
+    // Posición inicial (desde -23.5°)
+    let thetaStart = Math.PI / 2 - (23.5 * Math.PI / 180);
+
+    // Cuadro 1 (extremo superior)
+    const geo1 = new THREE.SphereGeometry(60, 24, 0.5, 0, Math.PI * 2, thetaStart, smallTheta);
+    const mesh1 = new THREE.Mesh(geo1, material);
+    arcoGrupo.add(mesh1);
+    thetaStart += smallTheta; // Avanzar ángulo
+
+   
+    for (let i = 0; i < 3; i++) {
+        const geo = new THREE.SphereGeometry(60, 24, 1, 0, Math.PI * 2, thetaStart, largeTheta);
+        const mesh = new THREE.Mesh(geo, material);
+        arcoGrupo.add(mesh);
+        thetaStart += largeTheta; // Avanzar ángulo
     }
 
-    // Función de animación para mover la esfera entre los perímetros de arco1 y arco2
-    function moverEsfera() {
-        // Calcular la posición de la esfera en el perímetro del arco usando el ángulo actual
-        const x = radioArco * Math.cos(angulo);
-        const y = radioArco * Math.sin(angulo);
-
-        // Interpolación entre arco1 y arco2, comenzando en arco1 (0) y variando hasta arco2 (1)
-        const interpolacion = (1 + Math.sin(angulo - Math.PI / 2)) / 2;
-
-        // Interpolar la posición entre los dos arcos
-        const z = THREE.MathUtils.lerp(arco1.position.z, arco2.position.z, interpolacion);
-        esfera.position.set(x, y, z);
-
-        // Crear un marcador en la posición actual de la esfera
-        crearMarcador(x, y, z);
-
-        // Incrementar el ángulo para el siguiente frame
-        angulo += velocidad;
-
-        // Llamar a la función en cada frame
-        requestAnimationFrame(moverEsfera);
-    }
-
-    // Iniciar el movimiento de la esfera
-    moverEsfera();
-}
-
-
-
-        // Función para crear un arco centrado en (0, 0, 0) con altura de 60
-function crearArco(latitud) {
-    // Eliminar el arco previo si ya existe
-    if (scene.getObjectByName('arco')) {
-        scene.remove(scene.getObjectByName('arco'));
-    }
-
-    // Crear la geometría del arco
-    const arcoRadio = 60;
-    const arcoSegmentos = 50;
-    const arcoMaterial = new THREE.LineBasicMaterial({ color: 0xFF5733 }); // Color del arco
-
-    const arcoPuntos = [];
-    for (let i = 0; i <= arcoSegmentos; i++) {
-        const theta = (i / arcoSegmentos) * Math.PI; // Crear arco de 180 grados
-        const x = arcoRadio * Math.cos(theta);
-        const y = arcoRadio * Math.sin(theta);
-        arcoPuntos.push(new THREE.Vector3(x, y, 0));
-    }
-
-    const arcoGeometry = new THREE.BufferGeometry().setFromPoints(arcoPuntos);
-    const arco = new THREE.Line(arcoGeometry, arcoMaterial);
-    const arco1 = new THREE.Line(arcoGeometry, arcoMaterial);
-    const arco2= new THREE.Line(arcoGeometry, arcoMaterial);
-    arco.name = 'arco';
-
-    // Rotar el arco en función de la latitud + 90 grados
-    arco.rotation.x = (latitud) * (Math.PI / 180); // Convertir a radianes
-    arco1.rotation.x = (latitud+23) * (Math.PI / 180); 
-    arco2.rotation.x = (latitud-23) * (Math.PI / 180); 
-    //arco.rotation.z = inclinacion;
     
+    const geo7 = new THREE.SphereGeometry(60, 24, 0.5, 0, Math.PI * 2, thetaStart, smallTheta);
+    const mesh7 = new THREE.Mesh(geo7, material);
+    arcoGrupo.add(mesh7);
 
-    // Agregar el arco a la escena
-    //scene.add(arco);
-    scene.add(arco1);
-    scene.add(arco2);
-    crearEsferaConMovimiento(arco1, arco2);
+    // Rotar y agregar el grupo a la escena
+    arcoGrupo.rotation.z = Math.PI / 2;
+    scene.add(arcoGrupo);
 }
 
-
-        function crearAnillos(altitudes, azimuts) {
-            const colores = [0xADD8E6, 0x800080, 0x008000, 0xFF0000, 0x00008B];  // Colores azul claro, morado, verde, rojo, azul oscuro
-
-// Eliminar puntos anteriores (si existen)
-scene.traverse(function (child) {
-    if (child.isMesh) {
-        scene.remove(child);
-    }
-});
-
-for (let i = 0; i < altitudes.length; i++) {
-    for (let j = 0; j < azimuts[i].length; j++) {
-        const altura = altitudes[i][j]*2;  // Altura del punto (en eje Y)
-        const azimut = azimuts[i][j] * (Math.PI / 180)*2;  // Azimut convertido a radianes
-
-        // Crear la geometría del punto (esfera pequeña)
-        const geometry = new THREE.SphereGeometry(0.5, 16, 16);  // Tamaño de la esfera (punto)
-        const material = new THREE.MeshBasicMaterial({ color: colores[i % colores.length] });
-        const punto = new THREE.Mesh(geometry, material);
-
-        // Calcular la posición del punto en función de la altura y azimut
-        const x = Math.cos(azimut) * altura;
-        const z = Math.sin(azimut) * altura;
-        const y = altura;  // La altura determina la posición en el eje Y
-        // Establecer la posición del punto
-        punto.position.set(x, y, z);
-
-        // Añadir el punto a la escena
-        scene.add(punto);
+function inclinarEsfera(latitud) {
+    const esfera = scene.getObjectByName('esfera_recortada');
+    if (esfera) {
+        esfera.rotation.z += latitud * (Math.PI / 180);
     }
 }
-        }
-
-        function actualizarSkyDome(altitudes, azimuts) {
-           // crearAnillos(altitudes, azimuts);
-        }
 
         function animate() {
             requestAnimationFrame(animate);
