@@ -1,10 +1,13 @@
 from flask import Flask, request, render_template, jsonify
+from flask import send_from_directory
 import numpy as np
-import matplotlib.pylab as plt
+import matplotlib
+matplotlib.use('Agg')  # Backend sin interfaz gráfica
+import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 import matplotlib.patches as mpatches
 from lectorEPW import lector_epw_bp 
-
+import os
 # Crear la aplicación Flask
 app = Flask(__name__)
 app.register_blueprint(lector_epw_bp)
@@ -138,6 +141,11 @@ def procesar_latitud():
         'altitudes': resultado['altitudes'],
         'azimuts': resultado['azimuts']
     })
+
+@app.route('/uploads/pintar_celeste.csv')
+def get_csv():
+    uploads_dir = os.path.join(app.root_path, 'uploads')
+    return send_from_directory(uploads_dir, 'pintar_celeste.csv')
  
 if __name__ == '__main__':
     app.run(debug=True)

@@ -139,6 +139,8 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
 
     <script>
         // Crear el mapa y centrarlo en una vista global
@@ -159,7 +161,7 @@ document.getElementById('epwInput').addEventListener('change', function(event) {
         const formData = new FormData();
         formData.append('file', epwFile);
 
-        fetch('/procesar-epw', {  // Cambiar la ruta a la nueva definida en Flask
+        fetch('/procesar-epw', {  
             method: 'POST',
             body: formData
         })
@@ -259,7 +261,7 @@ document.getElementById('epwInput').addEventListener('change', function(event) {
     .then(data => {
         console.log('Respuesta:', data);
         document.getElementById('solarImage').src = '/static/sunpath_diagram.png';
-        crearArco(latitud);
+      //  crearArco(latitud);
         inclinarEsfera(latitud);
     })
     .catch((error) => {
@@ -294,57 +296,119 @@ document.getElementById('epwInput').addEventListener('change', function(event) {
         crearArco(0); // Llama a la función de creación de arcos con latitud inicial
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    function crearArco(latitud) {
-    // Eliminar objeto previo si existe
+function crearArco(latitud) {
     const objetoPrevio = scene.getObjectByName('esfera_recortada');
     if (objetoPrevio) scene.remove(objetoPrevio);
 
-    const totalTheta = (47 * Math.PI / 180); 
-    const largeTheta = (totalTheta / (5 + (2 / 3) * 2))*2; 
-    const smallTheta = largeTheta / 2; 
-     
-    const material = new THREE.MeshBasicMaterial({ 
-        color: 0x00aaff, 
-        transparent: true, 
-        opacity: 0.5, 
-        wireframe: true 
+    const grupoPaneles = new THREE.Group();
+    grupoPaneles.name = 'esfera_recortada';
+
+    // Crear 7 ángulos para 6 paneles (6 meses pares → 6 sectores)
+    const angulos = [66.6, 69.9, 79.2, 90, 101.6, 110, 113.6]; // puedes ajustar si quieres más precisión
+    const radianes = angulos.map(a => THREE.MathUtils.degToRad(a));
+
+    const radio = 60;
+    const totalPaneles = 24; // 24 horas
+
+    const arcosPuntos = [];
+    radianes.forEach(phi => {
+        const puntos = [];
+        for (let i = 0; i <= totalPaneles; i++) {
+            const theta = (i / totalPaneles) * Math.PI * 2;
+            const x = radio * Math.sin(phi) * Math.cos(theta);
+            const y = radio * Math.sin(phi) * Math.sin(theta);
+            const z = radio * Math.cos(phi);
+            puntos.push(new THREE.Vector3(x, y, z));
+        }
+        arcosPuntos.push(puntos);
     });
 
-    // Grupo para contener todas las partes
-    const arcoGrupo = new THREE.Group();
-    arcoGrupo.name = 'esfera_recortada';
+    Papa.parse('../uploads/pintar_celeste.csv', {
+        download: true,
+        header: true,
+        complete: function(results) {
+            const colorDict = {};
 
-    // Posición inicial (desde -23.5°)
-    let thetaStart = Math.PI / 2 - (23.5 * Math.PI / 180);
+            // Leer datos del CSV
+            results.data.forEach(row => {
+                const mes = parseInt(row.MES);
+                const hora = parseInt(row.HORA);
+                const colorRaw = row.COLOR;
 
-    // Cuadro 1 (extremo superior)
-    const geo1 = new THREE.SphereGeometry(60, 24, 0.5, 0, Math.PI * 2, thetaStart, smallTheta);
-    const mesh1 = new THREE.Mesh(geo1, material);
-    arcoGrupo.add(mesh1);
-    thetaStart += smallTheta; // Avanzar ángulo
+                if (!colorRaw || isNaN(mes) || isNaN(hora)) return;
 
-   
-    for (let i = 0; i < 3; i++) {
-        const geo = new THREE.SphereGeometry(60, 24, 1, 0, Math.PI * 2, thetaStart, largeTheta);
-        const mesh = new THREE.Mesh(geo, material);
-        arcoGrupo.add(mesh);
-        thetaStart += largeTheta; // Avanzar ángulo
-    }
+                const color = colorRaw.trim().toLowerCase();
 
-    
-    const geo7 = new THREE.SphereGeometry(60, 24, 0.5, 0, Math.PI * 2, thetaStart, smallTheta);
-    const mesh7 = new THREE.Mesh(geo7, material);
-    arcoGrupo.add(mesh7);
+                // Solo guardar meses pares
+                if (mes % 2 === 0) {
+                    colorDict[`${mes},${hora}`] = color;
+                }
+            });
 
-    // Rotar y agregar el grupo a la escena
-    arcoGrupo.rotation.z = Math.PI / 2;
-    scene.add(arcoGrupo);
+            // Crear paneles solo para meses pares
+            for (let i = 0; i < arcosPuntos.length - 1; i++) {
+                const mes = 2 * (i + 1); // 2, 4, 6, 8, 10, 12
+
+                const arcoActual = arcosPuntos[i];
+                const arcoSiguiente = arcosPuntos[i + 1];
+
+                for (let j = 0; j < totalPaneles; j++) {
+                    const hora = j;
+                    const key = `${mes},${hora}`;
+                    let colorHex = colorDict[key];
+
+                    // Si es hora 0:00, forzar gris
+                    if (hora === 0) {
+                        colorHex = '#cccccc';
+                    } else {
+                        if (!colorHex) colorHex = '#cccccc';
+                        if (colorHex === 'white') colorHex = '#cccccc';
+                    }
+
+                    const v1 = arcoActual[j];
+                    const v2 = arcoActual[j + 1];
+                    const v3 = arcoSiguiente[j + 1];
+                    const v4 = arcoSiguiente[j];
+
+                    const vertices = [
+                        v1.x, v1.y, v1.z,
+                        v2.x, v2.y, v2.z,
+                        v3.x, v3.y, v3.z,
+                        v4.x, v4.y, v4.z
+                    ];
+
+                    const indices = [0, 1, 2, 0, 2, 3];
+
+                    const geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                    geometry.setIndex(indices);
+                    geometry.computeVertexNormals();
+
+                    const material = new THREE.MeshBasicMaterial({
+                        color: new THREE.Color(colorHex),
+                        side: THREE.FrontSide,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+
+                    const panel = new THREE.Mesh(geometry, material);
+                    grupoPaneles.add(panel);
+                }
+            }
+
+            grupoPaneles.rotation.z = -Math.PI / 2;
+            scene.add(grupoPaneles);
+        }
+    });
 }
+
+
+
 
 function inclinarEsfera(latitud) {
     const esfera = scene.getObjectByName('esfera_recortada');
     if (esfera) {
-        esfera.rotation.z += latitud * (Math.PI / 180);
+        esfera.rotation.x = latitud * (Math.PI / 180); // Asignación directa
     }
 }
 

@@ -1,8 +1,11 @@
 from flask import Blueprint, request, jsonify
 import pandas as pd
 import os
+import matplotlib
+matplotlib.use('Agg')  # Backend sin interfaz gráfica
 import matplotlib.pyplot as plt
 import numpy as np
+import csv
 
 lector_epw_bp = Blueprint('lector_epw', __name__)
 UPLOAD_FOLDER = 'uploads'
@@ -51,8 +54,7 @@ def procesar_epw():
         temperatura_neutra = promedio_por_mes.apply(lambda x: 17.8 + (0.31 * x))
         
         # Calcular el promedio de temperaturas por hora de cada mes entre 6AM y 6PM
-        df_dia = df[(df["Hora"] >= 6) & (df["Hora"] <= 18)]
-        promedio_por_hora_mes = df_dia.groupby(["Mes", "Hora"])["Temperatura_Aire"].mean().reset_index()
+        promedio_por_hora_mes = df.groupby(["Mes", "Hora"])["Temperatura_Aire"].mean().reset_index()
 
         # Tonos personalizados
         colores_azules = ["#cce5ff", "#99ccff", "#66b2ff", "#3399ff", "#0073e6"]
@@ -153,6 +155,15 @@ def procesar_epw():
         plt.tight_layout()
         plt.savefig("uploads/tabla_hora_mes.png")
         print("Imagen hora-mes generada en uploads/tabla_hora_mes.png")
+
+        with open("uploads/pintar_celeste.csv", mode='w', newline='') as file:
+         writer = csv.writer(file)
+         writer.writerow(["MES", "HORA", "COLOR"])
+         for hora in range(24):
+            for mes in range(1, 13):
+                color = tabla_colores[hora][mes - 1]
+                writer.writerow([mes, hora, color])
+        print("Archivo pintar_celeste.csv generado en uploads/pintar_celeste.csv")
 
         # Crear CSV procesado
         df_resultado = df.merge(promedio_por_hora_mes, on=["Mes", "Hora"], how="left", suffixes=("", "_Promedio_Hora"))
