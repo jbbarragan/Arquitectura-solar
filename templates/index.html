@@ -122,9 +122,11 @@
         <div id="left">
             <div id="map"></div>
             <div id="epwViewer">
-                <div id="solarDiagram">
-                    <img id="solarImage" src="" alt="Diagrama solar" />
-                </div>
+               <div id="solarDiagram">
+                <img id="solarImage" src="" alt="Diagrama solar" />
+                <button id="nextImageButton" style="margin-top: 10px;">Siguiente</button>
+            </div>
+
             </div>
         </div>
 
@@ -132,6 +134,21 @@
             <div id="viewer"></div>
         </div>
     </div>
+
+    <script>
+    const imageList = [
+        '/static/sunpath_diagram.png',
+        '/uploads/tabla_hora_mes.png',
+        '/uploads/tabla_temperaturas.png'
+    ];
+    let currentImageIndex = 0;
+
+    document.getElementById('nextImageButton').addEventListener('click', () => {
+        currentImageIndex = (currentImageIndex + 1) % imageList.length;
+        document.getElementById('solarImage').src = imageList[currentImageIndex];
+    });
+</script>
+
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -295,122 +312,211 @@ document.getElementById('epwInput').addEventListener('change', function(event) {
         // Llamar a la función después de crear los arcos
         crearArco(0); // Llama a la función de creación de arcos con latitud inicial
 
+let esferaAnimada = null;
+let tiempoAnimacion = 0;
+let arcoActualIndex = 0;
+let lineaProyeccion = null;
+
+// 2. Función que anima la esfera
+function crearEsferaGiratoria(arcosOriginales, inclinacionGrados, velocidad = 0.01) {
+    if (esferaAnimada) {
+        scene.remove(esferaAnimada);
+        esferaAnimada = null;
+    }
+    if (lineaProyeccion) {
+        scene.remove(lineaProyeccion);
+        lineaProyeccion = null;
+    }
+
+    // Aplicar inclinación a los puntos
+    const inclinacionRad = THREE.MathUtils.degToRad(inclinacionGrados);
+    const matrizRotacion = new THREE.Matrix4().makeRotationX(inclinacionRad);
+
+    const arcosPuntos = arcosOriginales.map(arco =>
+        arco.map(p => p.clone().applyMatrix4(matrizRotacion))
+    );
+
+    const geometry = new THREE.SphereGeometry(1.5, 16, 16);
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    esferaAnimada = new THREE.Mesh(geometry, material);
+    scene.add(esferaAnimada);
+
+    const puntosLinea = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)];
+    const geometryLinea = new THREE.BufferGeometry().setFromPoints(puntosLinea);
+    const materialLinea = new THREE.LineBasicMaterial({ color: 0xffff00 });
+    lineaProyeccion = new THREE.Line(geometryLinea, materialLinea);
+    scene.add(lineaProyeccion);
+
+    function animar() {
+        const puntos = arcosPuntos[arcoActualIndex];
+        const t = tiempoAnimacion % 1;
+        const indexFloat = t * (puntos.length - 1);
+        const i = Math.floor(indexFloat);
+        const alpha = indexFloat - i;
+
+        const p1 = puntos[i];
+        const p2 = puntos[i + 1];
+        if (p1 && p2) {
+            esferaAnimada.position.lerpVectors(p1, p2, alpha);
+        }
+
+        const origen = new THREE.Vector3(0, 0, 0);
+        const destino = esferaAnimada.position.clone();
+        lineaProyeccion.geometry.setFromPoints([origen, destino]);
+
+        tiempoAnimacion += velocidad;
+
+        if (tiempoAnimacion >= 1) {
+            tiempoAnimacion = 0;
+            arcoActualIndex = (arcoActualIndex + 1) % arcosPuntos.length;
+        }
+
+        requestAnimationFrame(animar);
+    }
+
+    animar();
+}
+   
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-function crearArco(latitud) {
+function crearArco() {
     const objetoPrevio = scene.getObjectByName('esfera_recortada');
     if (objetoPrevio) scene.remove(objetoPrevio);
 
     const grupoPaneles = new THREE.Group();
     grupoPaneles.name = 'esfera_recortada';
 
-    // Crear 7 ángulos para 6 paneles (6 meses pares → 6 sectores)
-    const angulos = [66.6, 69.9, 79.2, 90, 101.6, 110, 113.6]; // puedes ajustar si quieres más precisión
-    const radianes = angulos.map(a => THREE.MathUtils.degToRad(a));
+    fetch('../uploads/pintar_celeste.csv')
+        .then(response => response.text())
+        .then(text => {
+            const lines = text.trim().split('\n');
 
-    const radio = 60;
-    const totalPaneles = 24; // 24 horas
-
-    const arcosPuntos = [];
-    radianes.forEach(phi => {
-        const puntos = [];
-        for (let i = 0; i <= totalPaneles; i++) {
-            const theta = (i / totalPaneles) * Math.PI * 2;
-            const x = radio * Math.sin(phi) * Math.cos(theta);
-            const y = radio * Math.sin(phi) * Math.sin(theta);
-            const z = radio * Math.cos(phi);
-            puntos.push(new THREE.Vector3(x, y, z));
-        }
-        arcosPuntos.push(puntos);
-    });
-
-    Papa.parse('../uploads/pintar_celeste.csv', {
-        download: true,
-        header: true,
-        complete: function(results) {
-            const colorDict = {};
-
-            // Leer datos del CSV
-            results.data.forEach(row => {
-                const mes = parseInt(row.MES);
-                const hora = parseInt(row.HORA);
-                const colorRaw = row.COLOR;
-
-                if (!colorRaw || isNaN(mes) || isNaN(hora)) return;
-
-                const color = colorRaw.trim().toLowerCase();
-
-                // Solo guardar meses pares
-                if (mes % 2 === 0) {
-                    colorDict[`${mes},${hora}`] = color;
-                }
-            });
-
-            // Crear paneles solo para meses pares
-            for (let i = 0; i < arcosPuntos.length - 1; i++) {
-                const mes = 2 * (i + 1); // 2, 4, 6, 8, 10, 12
-
-                const arcoActual = arcosPuntos[i];
-                const arcoSiguiente = arcosPuntos[i + 1];
-
-                for (let j = 0; j < totalPaneles; j++) {
-                    const hora = j;
-                    const key = `${mes},${hora}`;
-                    let colorHex = colorDict[key];
-
-                    // Si es hora 0:00, forzar gris
-                    if (hora === 0) {
-                        colorHex = '#cccccc';
-                    } else {
-                        if (!colorHex) colorHex = '#cccccc';
-                        if (colorHex === 'white') colorHex = '#cccccc';
-                    }
-
-                    const v1 = arcoActual[j];
-                    const v2 = arcoActual[j + 1];
-                    const v3 = arcoSiguiente[j + 1];
-                    const v4 = arcoSiguiente[j];
-
-                    const vertices = [
-                        v1.x, v1.y, v1.z,
-                        v2.x, v2.y, v2.z,
-                        v3.x, v3.y, v3.z,
-                        v4.x, v4.y, v4.z
-                    ];
-
-                    const indices = [0, 1, 2, 0, 2, 3];
-
-                    const geometry = new THREE.BufferGeometry();
-                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                    geometry.setIndex(indices);
-                    geometry.computeVertexNormals();
-
-                    const material = new THREE.MeshBasicMaterial({
-                        color: new THREE.Color(colorHex),
-                        side: THREE.FrontSide,
-                        transparent: true,
-                        opacity: 0.8
-                    });
-
-                    const panel = new THREE.Mesh(geometry, material);
-                    grupoPaneles.add(panel);
-                }
+            if (lines.length < 2) {
+                console.error('El CSV no contiene latitud');
+                return;
             }
 
-            grupoPaneles.rotation.z = -Math.PI / 2;
-            scene.add(grupoPaneles);
-        }
-    });
+            // Obtener encabezados y latitud
+            const headerLine = lines[0];
+            const latLine = lines[1].split(',')[0];
+            const latitudStr = latLine.replace('Latitud:', '').trim();
+            const latitud = parseFloat(latitudStr);
+
+            if (isNaN(latitud)) {
+                console.error('Latitud inválida en el CSV:', latitudStr);
+                return;
+            }
+
+            // Parsear CSV desde la tercera línea
+            const csvSinLatitud = [headerLine].concat(lines.slice(2)).join('\n');
+
+            Papa.parse(csvSinLatitud, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    const colorDict = {};
+
+                    results.data.forEach(row => {
+                        const mes = parseInt(row.MES);
+                        const hora = parseInt(row.HORA);
+                        const colorRaw = row.COLOR;
+
+                        if (!colorRaw || isNaN(mes) || isNaN(hora)) return;
+
+                        const color = colorRaw.trim().toLowerCase();
+                        if (mes % 2 === 0) {
+                            colorDict[`${mes},${hora}`] = color;
+                        }
+                    });
+
+                    // Crear arcos
+                    const angulos = [66.6, 69.9, 79.2, 90, 101.6, 110, 113.6];
+                    const radianes = angulos.map(a => THREE.MathUtils.degToRad(a));
+                    const radio = 60;
+                    const totalPaneles = 24;
+
+                    const arcosPuntos = [];
+                    radianes.forEach(phi => {
+                        const puntos = [];
+                        for (let i = 0; i <= totalPaneles; i++) {
+                            const theta = (i / totalPaneles) * Math.PI * 2;
+                            const x = radio * Math.sin(phi) * Math.cos(theta);
+                            const y = radio * Math.sin(phi) * Math.sin(theta);
+                            const z = radio * Math.cos(phi);
+                            puntos.push(new THREE.Vector3(x, y, z));
+                        }
+                        arcosPuntos.push(puntos);
+                    });
+
+                    for (let i = 0; i < arcosPuntos.length - 1; i++) {
+                        const mes = 2 * (i + 1);
+                        const arcoActual = arcosPuntos[i];
+                        const arcoSiguiente = arcosPuntos[i + 1];
+
+                        for (let j = 0; j < totalPaneles; j++) {
+                            const hora = j;
+                            const key = `${mes},${hora}`;
+                            let colorHex = colorDict[key];
+
+                            if (hora === 0) {
+                                colorHex = '#cccccc';
+                            } else {
+                                if (!colorHex) colorHex = '#cccccc';
+                                if (colorHex === 'white') colorHex = '#cccccc';
+                            }
+
+                            const v1 = arcoActual[j];
+                            const v2 = arcoActual[j + 1];
+                            const v3 = arcoSiguiente[j + 1];
+                            const v4 = arcoSiguiente[j];
+
+                            const vertices = [
+                                v1.x, v1.y, v1.z,
+                                v2.x, v2.y, v2.z,
+                                v3.x, v3.y, v3.z,
+                                v4.x, v4.y, v4.z
+                            ];
+
+                            const indices = [0, 1, 2, 0, 2, 3];
+
+                            const geometry = new THREE.BufferGeometry();
+                            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                            geometry.setIndex(indices);
+                            geometry.computeVertexNormals();
+
+                            const material = new THREE.MeshBasicMaterial({
+                                color: new THREE.Color(colorHex),
+                                side: THREE.FrontSide,
+                                transparent: true,
+                                opacity: 0.8
+                            });
+
+                            const panel = new THREE.Mesh(geometry, material);
+                            grupoPaneles.add(panel);
+                        }
+                    }
+
+                    grupoPaneles.rotation.z = -Math.PI / 2;
+                    grupoPaneles.rotation.x = THREE.MathUtils.degToRad(latitud);
+
+                    scene.add(grupoPaneles);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error al leer el archivo CSV:', error);
+        });
 }
-
-
 
 
 function inclinarEsfera(latitud) {
     const esfera = scene.getObjectByName('esfera_recortada');
     if (esfera) {
-        esfera.rotation.x = latitud * (Math.PI / 180); // Asignación directa
+        esfera.rotation.x = latitud * (Math.PI / 180);
+        //crearEsferaGiratoria(arcosPuntos, latitud);
     }
 }
+
 
         function animate() {
             requestAnimationFrame(animate);

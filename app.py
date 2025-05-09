@@ -146,6 +146,12 @@ def procesar_latitud():
 def get_csv():
     uploads_dir = os.path.join(app.root_path, 'uploads')
     return send_from_directory(uploads_dir, 'pintar_celeste.csv')
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory('uploads', filename)
+
  
 if __name__ == '__main__':
     app.run(debug=True)
+

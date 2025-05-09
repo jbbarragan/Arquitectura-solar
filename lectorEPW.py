@@ -21,12 +21,21 @@ def procesar_epw():
         if file.filename == '':
             return jsonify({'error': 'Nombre de archivo vacío'}), 400
 
+        if not file.filename.lower().endswith('.epw'):
+            return jsonify({'error': 'El archivo debe tener extensión .epw'}), 400
+
         filepath = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(filepath)
         print(f"Archivo guardado en: {filepath}")
 
         if not os.path.exists(filepath):
             return jsonify({'error': 'Error al guardar el archivo'}), 500
+
+        # Leer latitud desde la primera línea del EPW
+        with open(filepath, 'r') as epw_file:
+            primera_linea = epw_file.readline()
+            partes = primera_linea.strip().split(',')
+            latitud = partes[6] if len(partes) > 6 else "desconocida"
 
         # Procesar el archivo EPW
         archivo_csv = filepath.replace('.epw', '.csv')
@@ -156,13 +165,15 @@ def procesar_epw():
         plt.savefig("uploads/tabla_hora_mes.png")
         print("Imagen hora-mes generada en uploads/tabla_hora_mes.png")
 
+        # Guardar CSV pintar_celeste.csv con latitud en la segunda línea
         with open("uploads/pintar_celeste.csv", mode='w', newline='') as file:
-         writer = csv.writer(file)
-         writer.writerow(["MES", "HORA", "COLOR"])
-         for hora in range(24):
-            for mes in range(1, 13):
-                color = tabla_colores[hora][mes - 1]
-                writer.writerow([mes, hora, color])
+            writer = csv.writer(file)
+            writer.writerow(["MES", "HORA", "COLOR"])
+            writer.writerow([f"Latitud: {latitud}", "", ""])  # Segunda línea con latitud
+            for hora in range(24):
+                for mes in range(1, 13):
+                    color = tabla_colores[hora][mes - 1]
+                    writer.writerow([mes, hora, color])
         print("Archivo pintar_celeste.csv generado en uploads/pintar_celeste.csv")
 
         # Crear CSV procesado
