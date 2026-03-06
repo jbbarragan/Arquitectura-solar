@@ -1,157 +1,151 @@
-from flask import Flask, request, render_template, jsonify
-from flask import send_from_directory
+from flask import Flask, request, render_template, jsonify, send_from_directory
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # Backend sin interfaz gráfica
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
 import matplotlib.patches as mpatches
-from lectorEPW import lector_epw_bp 
+from matplotlib.patches import FancyArrowPatch
 import os
-# Crear la aplicación Flask
+import io
+import base64
+from lectorEPW import lector_epw_bp
+
 app = Flask(__name__)
 app.register_blueprint(lector_epw_bp)
 
-pi = np.pi
+# ── Trigonometría en grados ──────────────────────────────────────────────────
+def sind(x):  return np.sin(np.deg2rad(x))
+def cosd(x):  return np.cos(np.deg2rad(x))
+def arcsin_d(x): return np.degrees(np.arcsin(np.clip(x, -1, 1)))
+def arccos_d(x): return np.degrees(np.arccos(np.clip(x, -1, 1)))
 
-# Funciones trigonométricas en grados
-def sin(x):
-    return np.sin(np.deg2rad(x))
+# ── Cálculo solar ─────────────────────────────────────────────────────────────
+def calcular_posicion_solar(lat):
+    """Devuelve (altitudes, azimuts) para 5 fechas representativas."""
+    horas = np.arange(0, 25)
+    H = (horas - 12) * 15               # ángulo horario
 
-def cos(x):
-    return np.cos(np.deg2rad(x))
+    # Días del año: solsticios, equinoccios y solsticio de verano sur
+    dias_N = [172, 355, 81, 264, 355]
+    etiquetas = ['Jun 21', 'Dic 21', 'Mar 21', 'Sep 21', 'Dic 21 b']
+    # Simplificado: usamos 5 fechas clave
+    dias_N = [172.25, 354.75, 81.0, 264.0, 111.25]
 
-def arcsin(x):
-    return np.arcsin(x) * (180.0 / pi)
+    declinaciones = [23.45 * sind(360 * (284 + n) / 365) for n in dias_N]
 
-def arccos(x):
-    return np.rad2deg(np.arccos(x))
+    altitudes, azimuts = [], []
+    for D in declinaciones:
+        alt = [arcsin_d(cosd(D) * cosd(lat) * cosd(h) + sind(D) * sind(lat)) for h in H]
+        az_list = []
+        for i, h in enumerate(H):
+            denom = cosd(alt[i])
+            if abs(denom) < 1e-6:
+                az_list.append(180.0)
+            else:
+                az = arccos_d((sind(D) * cosd(lat) - cosd(D) * sind(lat) * cosd(h)) / denom)
+                az_list.append(az if h <= 0 else 360 - az)
+        altitudes.append(alt)
+        azimuts.append(az_list)
 
-# Función para generar el diagrama solar y devolver altitud y azimut
-def generar_diagrama_solar(L):
-    # Horas del día
-    T = range(0, 25, 1)
-    
-    # Ángulo horario (15° por cada hora desde el mediodía)
-    H = [15 * (x - 12) for x in T]
+    return altitudes, azimuts
 
-    # Días del año (en diferentes meses)
-    N = [354.75, 293.75, 81, 111.25, 172.25]
 
-    # Declinaciones solares para los días seleccionados
-    D = [23.4 * sin((360.0 * (284.0 + x)) / 365.0) for x in N]
+def generar_diagrama_solar_polar(lat):
+    """
+    Genera el diagrama solar en proyección polar estereográfica
+    usando matplotlib puro (sin basemap).
+    El resultado se guarda como PNG y también se devuelve en base64.
+    """
+    altitudes, azimuts = calcular_posicion_solar(lat)
 
-    # Función para calcular altitud solar
-    def calcular_altitud(D, L, H):
-        return [arcsin(cos(D) * cos(L) * cos(h) + sin(D) * sin(L)) for h in H]
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={'projection': 'polar'})
+    fig.patch.set_facecolor('#0d1117')
+    ax.set_facecolor('#0d1117')
 
-    # Cálculo de altitudes para los diferentes días
-    altitudes = [calcular_altitud(D[i], L, H) for i in range(len(D))]
+    # Configuración de la grilla polar
+    ax.set_theta_zero_location('N')
+    ax.set_theta_direction(-1)           # sentido horario = E a la derecha
+    ax.set_ylim(0, 90)
+    ax.set_yticks(range(0, 91, 15))
+    ax.set_yticklabels([f'{90-v}°' for v in range(0, 91, 15)],
+                       color='#8892a4', fontsize=7)
+    ax.set_xticks(np.deg2rad([0, 45, 90, 135, 180, 225, 270, 315]))
+    ax.set_xticklabels(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
+                       color='#c9d1d9', fontsize=9, fontweight='bold')
+    ax.tick_params(axis='y', colors='#8892a4')
+    ax.grid(color='#30363d', linewidth=0.6, linestyle='--')
+    ax.spines['polar'].set_color('#30363d')
 
-    np.seterr(divide='ignore', invalid='ignore')
+    colores = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ec4899']
+    etiquetas = ['Jun 21', 'Dic 21', 'Equinoccio Mar', 'Equinoccio Sep', 'Nov/Ene']
 
-    # Función para calcular el azimut solar
-    def calcular_azimuth(altitud, declinacion_index):
-        n = 0
-        m_az = []
-        e_az = []
-        while n < len(altitud):
-            morn_az = arccos((sin(D[declinacion_index]) * cos(L) - cos(D[declinacion_index]) * sin(L) * cos(H[n])) / cos(altitud[n]))
-            evenin_az = 360 - morn_az
-            n += 1
-            m_az.append(morn_az)
-            e_az.append(evenin_az)
+    for i, (alts, azs) in enumerate(zip(altitudes, azimuts)):
+        # Convertir altitud a radio en proyección (90 - alt = distancia al cénit)
+        validos = [(az, alt) for az, alt in zip(azs, alts) if alt > 0]
+        if not validos:
+            continue
+        azs_v, alts_v = zip(*validos)
+        r = [90 - a for a in alts_v]
+        theta = np.deg2rad(azs_v)
+        ax.plot(theta, r, color=colores[i], linewidth=2, label=etiquetas[i],
+                solid_capstyle='round')
+        ax.scatter(theta, r, color=colores[i], s=15, zorder=5)
 
-        morning_az_list = m_az[:((len(m_az) + 1) // 2)]
-        evening_az_list = e_az[(((len(e_az)) - 1) // 2):]
-        az_list = morning_az_list + evening_az_list
-        del(az_list[13])
-        az_list = [0.0 if np.isnan(x) else x for x in az_list]
+    # Punto cénit
+    ax.scatter([0], [0], color='#fbbf24', s=120, zorder=10, marker='*')
 
-        if abs(az_list[12] - az_list[11]) > 100:
-            del(az_list[12])
-            az_list.insert(12, 180.0)
+    ax.legend(loc='lower left', bbox_to_anchor=(-0.18, -0.05),
+              framealpha=0.2, labelcolor='#c9d1d9', fontsize=8,
+              facecolor='#161b22', edgecolor='#30363d')
+    ax.set_title(f'Diagrama Solar — Latitud {lat:.2f}°',
+                 color='#e6edf3', fontsize=11, pad=15, fontweight='bold')
 
-        if L < 0:
-            del(az_list[0])
-            az_list.insert(0, 180)
-            del(az_list[24])
-            az_list.insert(24, 180)
-        return az_list
+    plt.tight_layout()
 
-    # Azimuts para cada altitud
-    azimuts = [calcular_azimuth(altitudes[i], i) for i in range(len(D))]
+    # Guardar a disco y a buffer base64
+    os.makedirs('static', exist_ok=True)
+    plt.savefig('static/sunpath_diagram.png', dpi=130,
+                bbox_inches='tight', facecolor=fig.get_facecolor())
 
-    # Crear el diagrama solar base
-    plt.figure(1, figsize=(13, 8))
-    Diagram = Basemap(projection='spstere', boundinglat=0, lon_0=180, resolution='l', round=True, suppress_ticks=True)
-    gridX, gridY = 10.0, 15.0
-    parallelGrid = np.arange(-90.0, 90.0, gridX)
-    meridianGrid = np.arange(-180.0, 180.0, gridY)
-
-    Diagram.drawparallels(parallelGrid, labels=[False, False, False, False])
-    Diagram.drawmeridians(meridianGrid, labels=[False, False, False, False], labelstyle='+/-', fmt='%i')
-
-    ax = plt.gca()
-    ax.text(0.5, 1.025, 'N', transform=ax.transAxes, horizontalalignment='center', verticalalignment='bottom', size=25)
-
-    # Función para graficar altitud y azimut
-    def plot(azimuth, altitude, color):
-        azi_list = []
-        alt_list = []
-        offset = 0.5 if color in ['bo-', 'co-'] else 0
-        for n in range(len(azimuth)):
-            azi, alt = Diagram(azimuth[n], -(altitude[n] + offset))
-            azi_list.append(azi)
-            alt_list.append(alt)
-        Diagram.plot(azi_list, alt_list, color)
-
-    # Colores para las curvas
-    colores = ['bo-', 'ro-', 'go-', 'mo-', 'co-']
-    for i in range(len(azimuts)):
-        plot(azimuts[i], altitudes[i], colores[i])
-
-    # Guardar en un archivo
-    plt.savefig('static/sunpath_diagram.png')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=130,
+                bbox_inches='tight', facecolor=fig.get_facecolor())
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode()
     plt.close()
 
-    # Devolver los datos calculados (altitudes y azimuts)
-    return {
-        'altitudes': altitudes,
-        'azimuts': azimuts
-    }
+    return img_b64, altitudes, azimuts
 
-# Ruta principal que sirve la página HTML
+
+# ── Rutas ─────────────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# Ruta para procesar la latitud desde el mapa interactivo
+
 @app.route('/procesar-latitud', methods=['POST'])
 def procesar_latitud():
     data = request.get_json()
     latitud = float(data['latitud'])
-
-    # Llamada a la función para generar el diagrama solar con la latitud proporcionada y obtener datos
-    resultado = generar_diagrama_solar(latitud)
-    
+    img_b64, altitudes, azimuts = generar_diagrama_solar_polar(latitud)
     return jsonify({
-        'mensaje': 'Diagrama solar generado correctamente',
+        'mensaje': 'Diagrama solar generado',
         'latitud': latitud,
-        'altitudes': resultado['altitudes'],
-        'azimuts': resultado['azimuts']
+        'imagen_b64': img_b64,
+        'altitudes': altitudes,
+        'azimuts': azimuts
     })
 
-@app.route('/uploads/pintar_celeste.csv')
-def get_csv():
-    uploads_dir = os.path.join(app.root_path, 'uploads')
-    return send_from_directory(uploads_dir, 'pintar_celeste.csv')
 
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory('uploads', filename)
 
- 
-if __name__ == '__main__':
-    app.run(debug=True)
 
+@app.route('/static/<path:filename>')
+def static_file(filename):
+    return send_from_directory('static', filename)
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False)
