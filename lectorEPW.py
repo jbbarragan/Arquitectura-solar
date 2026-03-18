@@ -91,7 +91,11 @@ def generar_heatmap(tabla_completa, temperatura_neutra, nombre_archivo):
     return b64
 
 
+<<<<<<< HEAD
 def generar_tabla_mensual(df, temperatura_neutra, promedio_por_mes, nombre_archivo, neutral_half=2.5, step=2.5):
+=======
+def generar_tabla_mensual(df, temperatura_neutra, promedio_por_mes, nombre_archivo):
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
     """Genera la tabla de rangos térmicos por mes con diseño oscuro."""
     fig, axes = plt.subplots(3, 4, figsize=(16, 10))
     fig.patch.set_facecolor(BG_DARK)
@@ -107,6 +111,7 @@ def generar_tabla_mensual(df, temperatura_neutra, promedio_por_mes, nombre_archi
         t_med = promedio_por_mes.get(mes, 20)
 
         rangos = []
+<<<<<<< HEAD
         # Subcalentamiento — bands below comfort zone, fixed step=2.5
         t = neutra - neutral_half
         for color in reversed(AZULES):
@@ -121,6 +126,22 @@ def generar_tabla_mensual(df, temperatura_neutra, promedio_por_mes, nombre_archi
             if t > t_max + step: break
             rangos.append((t, t + step, color, 'calido'))
             t += step
+=======
+        # Frío
+        t = neutra - 2
+        for i, color in enumerate(reversed(AZULES)):
+            if t < t_min - 2: break
+            rangos.insert(0, (t, t + 2, color, 'frío'))
+            t -= 2
+        # Neutral
+        rangos.append((neutra - 1, neutra + 1, '#374151', 'neutro'))
+        # Calor
+        t = neutra + 2
+        for color in NARANJAS:
+            if t > t_max + 2: break
+            rangos.append((t, t + 2, color, 'cálido'))
+            t += 2
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
 
         meses_nombres = ['Ene','Feb','Mar','Abr','May','Jun',
                          'Jul','Ago','Sep','Oct','Nov','Dic']
@@ -169,6 +190,7 @@ def procesar_epw():
         filepath = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(filepath)
 
+<<<<<<< HEAD
         # Acceptability mode: 90% = ±2.5°C half-range, 80% = ±3.5°C
         accept_mode_raw = request.form.get('accept_mode', '90')
         # neutral_half = half-width of comfort zone only
@@ -182,37 +204,61 @@ def procesar_epw():
         step = 2.5
         half_range = neutral_half  # kept for compatibility
 
+=======
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
         # Leer metadatos de la primera línea
         with open(filepath, 'r', encoding='latin-1') as f:
             primera_linea = f.readline()
         partes = primera_linea.strip().split(',')
+<<<<<<< HEAD
         latitud  = float(partes[6]) if len(partes) > 6 else 0.0
         longitud = float(partes[7]) if len(partes) > 7 else 0.0
         ciudad   = partes[1] if len(partes) > 1 else 'Desconocida'
         pais     = partes[3] if len(partes) > 3 else ''
+=======
+        latitud = float(partes[6]) if len(partes) > 6 else 0.0
+        longitud = float(partes[7]) if len(partes) > 7 else 0.0
+        ciudad = partes[1] if len(partes) > 1 else 'Desconocida'
+        pais = partes[3] if len(partes) > 3 else ''
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
 
         # Leer datos climáticos
         df = pd.read_csv(filepath, skiprows=8, header=None, encoding='latin-1')
         if df.empty:
             return jsonify({'error': 'No se pudo leer el EPW'}), 500
 
+<<<<<<< HEAD
         col_indices = {"Mes": 1, "Dia": 2, "Hora": 3,
+=======
+        col_indices = {"Mes": 1, "Día": 2, "Hora": 3,
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
                        "Temperatura_Aire": 6, "Humedad_Relativa": 8}
         df = df.iloc[:, list(col_indices.values())]
         df.columns = list(col_indices.keys())
         df["Hora"] = df["Hora"].apply(lambda x: x - 1 if x == 24 else x)
 
         # Cálculos estadísticos
+<<<<<<< HEAD
         promedio_por_mes      = df.groupby("Mes")["Temperatura_Aire"].mean()
         temperatura_neutra    = promedio_por_mes.apply(lambda x: 17.8 + 0.31 * x)
         promedio_por_hora_mes = df.groupby(["Mes", "Hora"])["Temperatura_Aire"].mean().reset_index()
 
         # Construir matriz hora×mes
+=======
+        promedio_por_mes = df.groupby("Mes")["Temperatura_Aire"].mean()
+        temperatura_neutra = promedio_por_mes.apply(lambda x: 17.8 + 0.31 * x)
+        promedio_por_hora_mes = df.groupby(["Mes", "Hora"])["Temperatura_Aire"].mean().reset_index()
+
+        # Construir tablas de colores
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
         tabla_completa = np.full((24, 12), np.nan)
         for _, row in promedio_por_hora_mes.iterrows():
             tabla_completa[int(row["Hora"]), int(row["Mes"]) - 1] = row["Temperatura_Aire"]
 
+<<<<<<< HEAD
         # Construir tabla de colores (step always 2.5, neutral_half defines comfort zone)
+=======
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
         tabla_colores = []
         for hora in range(24):
             fila_colores = []
@@ -223,6 +269,7 @@ def procesar_epw():
                     fila_colores.append('#374151')
                 else:
                     diff = temp - neutra
+<<<<<<< HEAD
                     if abs(diff) <= neutral_half:
                         fila_colores.append('white')
                     elif diff < -neutral_half:
@@ -230,6 +277,15 @@ def procesar_epw():
                         fila_colores.append(AZULES[idx])
                     else:
                         idx = min(4, int((abs(diff) - neutral_half) // step))
+=======
+                    if abs(diff) <= 1:
+                        fila_colores.append('white')
+                    elif diff < -1:
+                        idx = min(4, int(abs(diff) // 2))
+                        fila_colores.append(AZULES[idx])
+                    else:
+                        idx = min(4, int(abs(diff) // 2))
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
                         fila_colores.append(NARANJAS[idx])
             tabla_colores.append(fila_colores)
 
@@ -239,7 +295,11 @@ def procesar_epw():
 
         b64_heatmap = generar_heatmap(tabla_completa, temperatura_neutra.to_dict(), path_heatmap)
         b64_mensual = generar_tabla_mensual(df, temperatura_neutra.to_dict(),
+<<<<<<< HEAD
                                             promedio_por_mes.to_dict(), path_mensual, neutral_half, step)
+=======
+                                            promedio_por_mes.to_dict(), path_mensual)
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
 
         # Guardar CSV de colores (incluye latitud)
         csv_path = os.path.join(UPLOAD_FOLDER, 'pintar_celeste.csv')
@@ -257,9 +317,15 @@ def procesar_epw():
                           suffixes=("", "_Prom"))
         df_res["Temperatura_Promedio_Mes"] = df_res["Mes"].map(promedio_por_mes)
         df_res["Temperatura_Neutra_Mes"] = df_res["Mes"].map(temperatura_neutra)
+<<<<<<< HEAD
         df_res = df_res[["Mes", "Dia", "Hora", "Temperatura_Aire_Prom",
                          "Temperatura_Promedio_Mes", "Temperatura_Neutra_Mes"]]
         df_res.columns = ["Mes", "Dia", "Hora", "TempPromedioHora",
+=======
+        df_res = df_res[["Mes", "Día", "Hora", "Temperatura_Aire_Prom",
+                         "Temperatura_Promedio_Mes", "Temperatura_Neutra_Mes"]]
+        df_res.columns = ["Mes", "Día", "Hora", "TempPromedioHora",
+>>>>>>> 59da878b1171ddf1704a46f519fd727fd7dc6e9e
                           "TempPromedioMes", "TempNeutraMes"]
         df_res.to_csv(archivo_csv, index=False)
 
