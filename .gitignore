@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+uploads/
+static/sunpath_diagram.png
+*.zip
+.env
