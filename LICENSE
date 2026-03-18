@@ -1,0 +1,79 @@
+MIT License
+
+Copyright (c) 2026 Joshua Abdiel Barragán Guardado
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+
+SOLAR·ARCH — Bioclimatic Solar Analysis Tool
+
+Concept & Thermal Comfort Methodology
+    Arq. Gerardo Velázquez Flores
+    The thermal comfort analysis methodology, including the adaptive comfort
+    temperature bands and bioclimatic classification system implemented in
+    this software, is the intellectual contribution of Arq. Gerardo Velázquez
+    Flores. This concept forms the analytical core of the tool.
+
+Design, Development & Implementation
+    Joshua Abdiel Barragán Guardado
+    All software design, code architecture, frontend and backend development,
+    3D visualization, solar geometry engine, and overall technical
+    implementation are the work of Joshua Abdiel Barragán Guardado.
+
+-------------------------------------------------------------------------------
+
+OPEN SOURCE DECLARATION
+
+This software is published with open intentions. It is freely available for
+download, modification, improvement, and redistribution by any third party,
+provided that:
+
+  1. The original authorship credits above are preserved in all copies and
+     derivative works.
+  2. The software and any derivative works are used exclusively for
+     non-commercial, non-profit purposes.
+  3. Any significant modifications or improvements are documented and, where
+     possible, contributed back to the community.
+
+Commercial use of this software or any derivative work, including but not
+limited to selling, licensing for profit, or integrating into commercial
+products or services, is not permitted without the explicit written consent
+of both authors named above.
+
+-------------------------------------------------------------------------------
+
+ACKNOWLEDGEMENTS
+
+This project makes use of the following open-source libraries and resources,
+each governed by their respective licenses:
+
+  - Flask (BSD License) — https://flask.palletsprojects.com
+  - Three.js (MIT License) — https://threejs.org
+  - Matplotlib (PSF License) — https://matplotlib.org
+  - Leaflet (BSD License) — https://leafletjs.com
+  - PapaParse (MIT License) — https://www.papaparse.com
+  - NumPy (BSD License) — https://numpy.org
+  - CartoDB Dark Matter tiles — © CARTO, © OpenStreetMap contributors
+
+Solar geometry calculations are based on standard astronomical algorithms
+including Spencer (1971) for the equation of time and the declination
+formula as commonly referenced in solar engineering literature.
+
+-------------------------------------------------------------------------------

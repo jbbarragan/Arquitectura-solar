@@ -1,0 +1,2095 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arquitectura Solar · Análisis Bioclimático</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700;1,300&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    /* ── Variables ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --accent:    #f97316;
+      --accent2:   #3b82f6;
+      --text:      #e6edf3;
+      --muted:     #8892a4;
+      --success:   #22c55e;
+      --danger:    #ef4444;
+      --radius:    8px;
+      --toolbar-h: 52px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+    }
+
+    /* ── Toolbar ────────────────────────────────────────────────────────── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: var(--toolbar-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      position: relative;
+      z-index: 100;
+    }
+
+    .toolbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: 12px;
+    }
+    .toolbar-brand svg { width: 22px; height: 22px; }
+    .toolbar-brand span {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    .toolbar-divider {
+      width: 1px; height: 28px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .tb-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .tb-btn:hover { background: var(--border); border-color: var(--muted); }
+    .tb-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+    .tb-btn.primary:hover { background: #ea6c0a; }
+    .tb-btn.secondary {
+      background: var(--accent2);
+      border-color: var(--accent2);
+      color: #fff;
+    }
+    .tb-btn.secondary:hover { background: #2563eb; }
+
+    .tb-search {
+      display: flex; align-items: center; gap: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 4px 10px;
+      flex: 1; max-width: 280px;
+    }
+    .tb-search input {
+      background: transparent; border: none; outline: none;
+      color: var(--text); font-size: 12px; font-family: inherit; width: 100%;
+    }
+    .tb-search input::placeholder { color: var(--muted); }
+    .tb-search svg { color: var(--muted); flex-shrink: 0; }
+
+    .tb-coords {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: auto;
+      white-space: nowrap;
+    }
+    .tb-coords span { color: var(--accent); }
+
+    input[type="file"] { display: none; }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    #app {
+      display: flex;
+      height: calc(100vh - var(--toolbar-h));
+    }
+
+    /* ── Left panel ─────────────────────────────────────────────────────── */
+    #left-panel {
+      width: 340px;
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    /* ── Map ────────────────────────────────────────────────────────────── */
+    #map-container {
+      position: relative;
+      height: 55%;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    #map { width: 100%; height: 100%; }
+
+    .map-badge {
+      position: absolute;
+      top: 8px; left: 8px;
+      z-index: 500;
+      background: rgba(13,17,23,0.85);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 4px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    /* ── EPW / Charts panel ─────────────────────────────────────────────── */
+    #charts-panel {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+    }
+
+    .tab-pills {
+      display: flex; gap: 4px;
+    }
+    .tab-pill {
+      font-size: 10px; padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer;
+      transition: all .15s;
+    }
+    .tab-pill.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff; font-weight: 700;
+    }
+    .chart-area {
+      flex: 1; overflow: hidden;
+      position: relative;
+    }
+    .chart-view {
+      position: absolute; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      padding: 12px;
+    }
+    .chart-view.active { display: flex; }
+    #tab-solar.active { flex-direction: column; align-items: center; justify-content: flex-start; overflow-y: auto; }
+
+    .chart-view img {
+      max-width: 100%; max-height: 100%;
+      object-fit: contain;
+      border-radius: var(--radius);
+    }
+
+    .empty-state {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; width: 100%;
+      color: var(--muted); text-align: center;
+    }
+    .empty-state svg { opacity: .3; }
+    .empty-state p { font-size: 12px; max-width: 180px; line-height: 1.5; }
+
+    /* Download strip */
+    .download-strip {
+      display: none;
+      padding: 8px 14px;
+      gap: 6px;
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .download-strip.visible { display: flex; }
+    .dl-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600;
+      padding: 4px 10px;
+      border-radius: var(--radius);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text); cursor: pointer;
+      text-decoration: none;
+      transition: background .15s;
+    }
+    .dl-btn:hover { background: var(--border); }
+    .dl-btn.orange { color: var(--accent); border-color: var(--accent); }
+    .dl-btn.blue { color: var(--accent2); border-color: var(--accent2); }
+
+    /* ── Right panel: 3D viewer ─────────────────────────────────────────── */
+    #right-panel {
+      flex: 1;
+      position: relative;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    #viewer { width: 100%; height: 100%; display: block; }
+
+    /* Overlay controls on 3D viewer */
+    #viewer-controls {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      display: flex; flex-direction: column; gap: 8px;
+      z-index: 50;
+      overflow-y: scroll;
+      padding: 14px 14px 20px 14px;
+      width: 220px;
+    }
+    #viewer-controls::-webkit-scrollbar { width: 4px; }
+    #viewer-controls::-webkit-scrollbar-track { background: transparent; }
+    #viewer-controls::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+    #viewer-controls::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    .vc-card {
+      background: rgba(22,27,34,.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      min-width: 180px;
+    }
+    .vc-label {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin-bottom: 8px;
+    }
+
+    .rotation-control {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .rotation-control input[type="range"] {
+      -webkit-appearance: none;
+      flex: 1; height: 4px;
+      background: var(--surface2);
+      border-radius: 2px; outline: none; cursor: pointer;
+    }
+    .rotation-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    .rotation-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; color: var(--accent);
+      min-width: 38px; text-align: right;
+    }
+
+    .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .vc-btn {
+      flex: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 5px; padding: 5px 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: background .15s;
+      white-space: nowrap;
+    }
+    .vc-btn:hover { background: var(--border); }
+
+    /* Drag-drop hint overlay */
+    #drag-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(13,17,23,.7);
+      backdrop-filter: blur(4px);
+      border: 2px dashed var(--accent);
+      border-radius: 0;
+      z-index: 200;
+      pointer-events: none;
+      opacity: 0; transition: opacity .2s;
+    }
+    #drag-overlay.visible { opacity: 1; }
+    #drag-overlay p {
+      color: var(--accent); font-size: 18px;
+      font-weight: 700; letter-spacing: .05em;
+    }
+
+    /* Viewer placeholder */
+    #viewer-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; pointer-events: none;
+    }
+    #viewer-placeholder svg { opacity: .08; }
+    #viewer-placeholder p {
+      font-size: 13px; color: var(--muted);
+      text-align: center; max-width: 260px; line-height: 1.6;
+    }
+    #viewer-placeholder.hidden { display: none; }
+
+    /* ── Toast ──────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      font-size: 13px; color: var(--text);
+      z-index: 9999;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.5);
+      transform: translateY(10px); opacity: 0;
+      transition: transform .25s, opacity .25s;
+      max-width: 320px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.success .toast-dot { background: var(--success); }
+    #toast.error .toast-dot { background: var(--danger); }
+    #toast.info .toast-dot { background: var(--accent2); }
+    .toast-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Loading ────────────────────────────────────────────────────────── */
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(13,17,23,.75);
+      backdrop-filter: blur(4px);
+      z-index: 8000;
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+    }
+    #loading-overlay.visible { display: flex; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { color: var(--muted); font-size: 13px; }
+
+    /* ── Leaflet dark theme override ────────────────────────────────────── */
+    .leaflet-container { background: #1a2030; }
+    .leaflet-control-zoom a {
+      background: var(--surface2) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    .leaflet-popup-content-wrapper {
+      background: var(--surface) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5) !important;
+    }
+    .leaflet-popup-tip { background: var(--surface) !important; }
+
+    /* Acceptability buttons */
+    #btn90, #btn80, #btnMicro { min-width: 38px; font-weight: 700; font-size: 11px; letter-spacing: .03em; }
+    #btnSemestre { font-weight: 700; font-size: 11px; letter-spacing: .03em; }
+    #btnSemestre.active { background: var(--accent2) !important; border-color: var(--accent2) !important; color: #fff !important; }
+    #btn90.active, #btn80.active, #btnMicro.active {
+      background: var(--accent) !important;
+      border-color: var(--accent) !important;
+      color: #fff !important;
+    }
+
+    /* Credits bar */
+    #credits-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 20px;
+      background: rgba(13,17,23,0.92);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: .04em;
+      z-index: 9999;
+      pointer-events: none;
+    }
+    .credits-sep { color: var(--border); }
+
+    /* Push app body up so credits don't overlap */
+    #app { height: calc(100vh - var(--toolbar-h) - 20px); }
+
+    /* Color legend panel — top-left of right-panel */
+    #comfort-legend {
+      position: absolute;
+      top: 14px; left: 14px;
+      background: rgba(13,17,23,0.82);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 6px 8px;
+      z-index: 60;
+      min-width: 130px;
+      pointer-events: none;
+    }
+    #comfort-legend .leg-title {
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      letter-spacing: .07em; margin-bottom: 5px; text-transform: uppercase;
+    }
+    .leg-row {
+      display: flex; align-items: center; gap: 5px;
+      margin-bottom: 3px;
+    }
+    .leg-swatch {
+      width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+    }
+    .leg-label { font-size: 11px; color: var(--text); line-height: 1.3; }
+    .leg-label small { color: var(--muted); font-size: 9px; display: block; }
+  </style>
+</head>
+<body>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────────────── -->
+<div id="toolbar">
+  <div class="toolbar-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" color="#f97316">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+    </svg>
+    <span>SOLAR·ARCH</span>
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <!-- Load 3D model -->
+  <label class="tb-btn" for="fileInput" title="Cargar modelo 3D (OBJ/MTL/STL)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+    </svg>
+    Modelo 3D
+  </label>
+  <input type="file" id="fileInput" accept=".obj,.mtl,.stl" multiple />
+
+  <!-- Load EPW -->
+  <button class="tb-btn primary" id="cargarEpwButton">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="12" y1="18" x2="12" y2="12"/>
+      <line x1="9" y1="15" x2="15" y2="15"/>
+    </svg>
+    Cargar EPW
+  </button>
+  <input type="file" id="epwInput" accept=".epw" />
+
+  <div class="toolbar-divider"></div>
+
+  <!-- Search -->
+  <div class="tb-search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+    </svg>
+    <input type="text" id="searchInput" placeholder="Buscar dirección o ciudad…" />
+  </div>
+
+  <div class="toolbar-divider"></div>
+  <button class="tb-btn" id="btn90" title="90% Aceptabilidad — rango ±2.5°C (±5°C total)">90%</button>
+  <button class="tb-btn" id="btn80" title="80% Aceptabilidad — rango ±3.5°C (±7°C total)">80%</button>
+  <button class="tb-btn" id="btnMicro" title="Micro — saltos de 2.5°C">Micro</button>
+  <div class="toolbar-divider"></div>
+  <button class="tb-btn" id="btnSemestre" title="Alternar semestre Ene-Jun / Jul-Dic">Ene–Jun</button>
+
+  <div class="tb-coords" id="coordsDisplay">
+    Lat <span id="latDisplay">—</span> &nbsp; Lon <span id="lonDisplay">—</span>
+  </div>
+</div>
+
+<!-- ── Credits bar ─────────────────────────────────────────────────────────── -->
+<div id="credits-bar">
+  <span>Concept &amp; Property &copy; 2026 &nbsp;·&nbsp; Arq. Gerardo Vel&#225;zquez Flores</span>
+  <span class="credits-sep">|</span>
+  <span>Software Development, Design &amp; Implementation &nbsp;·&nbsp; Joshua Abdiel Barrag&#225;n Guardado</span>
+</div>
+
+<!-- ── App body ────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Left panel -->
+  <div id="left-panel">
+
+    <!-- Map -->
+    <div id="map-container">
+      <div id="map"></div>
+      <div class="map-badge">Haz clic para seleccionar ubicación</div>
+
+    </div>
+
+    <!-- Charts -->
+    <div id="charts-panel">
+      <div class="panel-header">
+        <span class="panel-title">Análisis climático</span>
+        <div class="tab-pills">
+          <button class="tab-pill active" data-tab="solar">Solar</button>
+          <button class="tab-pill" data-tab="heatmap">Horas × Mes</button>
+          <button class="tab-pill" data-tab="mensual">Zona de confort</button>
+        </div>
+      </div>
+
+      <div class="chart-area">
+        <div class="chart-view active" id="tab-solar">
+          <div class="empty-state" id="empty-solar">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>
+            </svg>
+            <p>Haz clic en el mapa para generar el diagrama solar de la ubicación</p>
+          </div>
+          <img id="solarImage" src="" alt="Diagrama solar" style="display:none;" />
+        </div>
+
+        <div class="chart-view" id="tab-heatmap">
+          <div class="empty-state" id="empty-heatmap">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+            </svg>
+            <p>Carga un archivo EPW para ver el mapa de calor por hora y mes</p>
+          </div>
+          <img id="heatmapImage" src="" alt="Heatmap hora-mes" style="display:none;" />
+        </div>
+
+        <div class="chart-view" id="tab-mensual">
+          <div class="empty-state" id="empty-mensual">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <p>Carga un archivo EPW para ver los rangos de confort térmico</p>
+          </div>
+          <img id="mensualImage" src="" alt="Tabla mensual" style="display:none;" />
+        </div>
+      </div>
+
+      <!-- Downloads -->
+      <div class="download-strip" id="downloadStrip">
+        <a class="dl-btn orange" id="dlHeatmap" href="#" download>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Horas×Mes
+        </a>
+        <a class="dl-btn orange" id="dlMensual" href="#" download>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Confort
+        </a>
+        <a class="dl-btn blue" id="dlSolar" href="#" download>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Solar
+        </a>
+        <a class="dl-btn" id="dlCSV" href="#" download>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          CSV
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: 3D viewer -->
+  <div id="right-panel">
+    <canvas id="viewer"></canvas>
+
+    <!-- Placeholder -->
+    <div id="viewer-placeholder">
+      <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width=".6">
+        <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+      </svg>
+      <p>Arrastra un modelo OBJ/STL aquí<br/>o usa el botón <strong>Modelo 3D</strong></p>
+    </div>
+
+    <!-- Drag overlay -->
+    <div id="drag-overlay"><p>Suelta el archivo aquí</p></div>
+
+    <!-- Color legend overlay -->
+    <div id="comfort-legend">
+      <div class="leg-title">Confort Térmico</div>
+      <div id="leg-rows">
+        <div class="leg-row"><div class="leg-swatch" style="background:#7f1d1d"></div><div class="leg-label">Sobrecalentamiento extremo<small id="leg-hot2"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#dc2626"></div><div class="leg-label">Sobrecalentamiento alto<small id="leg-hot1"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#f97316"></div><div class="leg-label">Sobrecalentamiento<small id="leg-warm"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#fbbf24"></div><div class="leg-label">Sobrecalentamiento ligero<small id="leg-lwarm"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#d1fae5;border:1px solid #374151"></div><div class="leg-label">Confort<small id="leg-neutral"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#93c5fd"></div><div class="leg-label">Bajo calentamiento ligero<small id="leg-lcool"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#3b82f6"></div><div class="leg-label">Bajo calentamiento<small id="leg-cool"></small></div></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#1d4ed8"></div><div class="leg-label">Bajo calentamiento extremo<small id="leg-cold"></small></div></div>
+      </div>
+      <div style="font-size:7px;color:var(--muted);margin-top:4px;border-top:1px solid var(--border);padding-top:3px;" id="leg-note">T.Neutra adaptativa del sitio</div>
+    </div>
+
+    <!-- Viewer controls -->
+    <div id="viewer-controls">
+      <!-- Norte Y -->
+      <div class="vc-card">
+        <div class="vc-label">Orientación Norte (Y)</div>
+        <div class="rotation-control">
+          <input type="range" id="northSlider" min="0" max="360" value="0" />
+          <span class="rotation-value" id="northValue">0°</span>
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="vc-btn" id="rotateCW">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 11-3-7.7L21 8"/></svg>+90°
+          </button>
+          <button class="vc-btn" id="rotateCCW">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transform:scaleX(-1)"><path d="M21 2v6h-6"/><path d="M21 13a9 9 0 11-3-7.7L21 8"/></svg>−90°
+          </button>
+        </div>
+      </div>
+
+      <!-- Inclinación X -->
+      <div class="vc-card">
+        <div class="vc-label">Inclinación (X)</div>
+        <div class="rotation-control">
+          <input type="range" id="rotXSlider" min="-180" max="180" value="0" />
+          <span class="rotation-value" id="rotXValue">0°</span>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="vc-btn" id="rotXPlus">+90°</button>
+          <button class="vc-btn" id="rotXMinus">−90°</button>
+        </div>
+      </div>
+
+      <!-- Ladeado Z -->
+      <div class="vc-card">
+        <div class="vc-label">Ladeado (Z)</div>
+        <div class="rotation-control">
+          <input type="range" id="rotZSlider" min="-180" max="180" value="0" />
+          <span class="rotation-value" id="rotZValue">0°</span>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="vc-btn" id="rotZPlus">+90°</button>
+          <button class="vc-btn" id="rotZMinus">−90°</button>
+        </div>
+      </div>
+
+      <div class="vc-card">
+        <div class="vc-label">Vista rápida</div>
+        <div class="btn-row">
+          <button class="vc-btn" id="viewTop">Top</button>
+          <button class="vc-btn" id="viewFront">Front</button>
+          <button class="vc-btn" id="viewIso">Iso</button>
+        </div>
+      </div>
+
+      <div class="vc-card">
+        <div class="vc-label">Esfera solar</div>
+        <div class="btn-row">
+          <button class="vc-btn" id="toggleSphere">Mostrar</button>
+          <button class="vc-btn" id="resetModel">Reset</button>
+        </div>
+        <div style="margin-top:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <div style="font-size:9px;color:var(--muted);">ESCALA ESFERA</div>
+            <span id="sphereScaleValue" style="font-family:'Space Mono',monospace;font-size:10px;color:var(--accent);">1.0×</span>
+          </div>
+          <input type="range" id="sphereScaleSlider" min="0.2" max="3.0" step="0.1" value="1.0"
+            style="-webkit-appearance:none;width:100%;height:4px;background:var(--surface2);border-radius:2px;outline:none;cursor:pointer;" />
+        </div>
+      </div>
+
+      <div class="vc-card" id="sunSimCard">
+        <div class="vc-label">&#9728; Simulaci&#243;n Solar</div>
+
+        <!-- Fecha/hora editables inline -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <div>
+            <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">MES</div>
+            <select id="sunMonthSel" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 5px;font-size:11px;cursor:pointer;outline:none;">
+              <option value="0">Enero</option><option value="1">Febrero</option>
+              <option value="2">Marzo</option><option value="3">Abril</option>
+              <option value="4">Mayo</option><option value="5">Junio</option>
+              <option value="6">Julio</option><option value="7">Agosto</option>
+              <option value="8">Septiembre</option><option value="9">Octubre</option>
+              <option value="10">Noviembre</option><option value="11">Diciembre</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">D&#205;A</div>
+            <input type="number" id="sunDayInput" min="1" max="31" value="1"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font-size:11px;outline:none;" />
+          </div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <div style="font-size:9px;color:var(--muted);">HORA</div>
+            <span id="sunHourDisplay" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);">12:00</span>
+          </div>
+          <input type="range" id="sunHourSlider" min="0" max="23.75" step="0.25" value="12"
+            style="-webkit-appearance:none;width:100%;height:4px;background:var(--surface2);border-radius:2px;outline:none;cursor:pointer;" />
+        </div>
+
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);text-align:center;margin-bottom:8px;background:var(--surface2);border-radius:4px;padding:4px 0;" id="sunDateLabel">
+          D&#237;a 1 &middot; 00:00h
+        </div>
+
+        <div class="btn-row" style="margin-bottom:8px;">
+          <button class="vc-btn" id="sunPlayBtn" style="color:var(--accent);border-color:var(--accent);font-weight:700;">&#9654; Play</button>
+          <button class="vc-btn" id="sunStopBtn">&#9632; Stop</button>
+        </div>
+
+        <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">VELOCIDAD</div>
+        <div class="rotation-control">
+          <input type="range" id="sunSpeedSlider" min="1" max="10" value="3" />
+          <span class="rotation-value" id="sunSpeedValue">3&#215;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Loading overlay ─────────────────────────────────────────────────────── -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p id="loadingMsg">Procesando…</p>
+</div>
+
+<!-- ── Toast ───────────────────────────────────────────────────────────────── -->
+<div id="toast"><div class="toast-dot"></div><span id="toastMsg"></span></div>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<script>
+// ── Utilities ─────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+function setLoading(visible, msg = 'Procesando…') {
+  document.getElementById('loadingMsg').textContent = msg;
+  document.getElementById('loading-overlay').classList.toggle('visible', visible);
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.tab-pill').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.chart-view').forEach(v => v.classList.remove('active'));
+    pill.classList.add('active');
+    document.getElementById('tab-' + pill.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Map setup ─────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([20, -70], 2);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© <a href="https://carto.com">CARTO</a>',
+  maxZoom: 19
+}).addTo(map);
+
+// Custom marker
+const markerIcon = L.divIcon({
+  className: '',
+  html: `<div style="width:12px;height:12px;background:#f97316;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px rgba(249,115,22,.7);"></div>`,
+  iconSize: [12, 12], iconAnchor: [6, 6]
+});
+
+let marker;
+map.on('click', e => {
+  const { lat, lng } = e.latlng;
+  if (marker) map.removeLayer(marker);
+  marker = L.marker([lat, lng], { icon: markerIcon })
+    .addTo(map)
+    .bindPopup(`<b style="font-family:'Space Mono',monospace;font-size:11px;">
+      ${lat.toFixed(4)}° N &nbsp; ${lng.toFixed(4)}° E</b>`)
+    .openPopup();
+  document.getElementById('latDisplay').textContent = lat.toFixed(4) + '°';
+  document.getElementById('lonDisplay').textContent = lng.toFixed(4) + '°';
+  enviarLatitud(lat);
+});
+
+// Search
+function searchAddress() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  setLoading(true, 'Buscando…');
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`)
+    .then(r => r.json())
+    .then(data => {
+      setLoading(false);
+      if (!data.length) { showToast('No se encontró la dirección', 'error'); return; }
+      const { lat, lon, display_name } = data[0];
+      const latlng = [+lat, +lon];
+      if (marker) map.removeLayer(marker);
+      marker = L.marker(latlng, { icon: markerIcon }).addTo(map)
+        .bindPopup(`<b style="font-size:11px;">${display_name}</b>`).openPopup();
+      map.setView(latlng, 13);
+      document.getElementById('latDisplay').textContent = (+lat).toFixed(4) + '°';
+      document.getElementById('lonDisplay').textContent = (+lon).toFixed(4) + '°';
+      enviarLatitud(+lat);
+    })
+    .catch(() => { setLoading(false); showToast('Error en la búsqueda', 'error'); });
+}
+document.getElementById('searchInput').addEventListener('keydown', e => e.key === 'Enter' && searchAddress());
+
+// ── Send latitude & get solar diagram ────────────────────────────────────────
+function enviarLatitud(lat) {
+  setLoading(true, 'Calculando diagrama solar…');
+  fetch('/procesar-latitud', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ latitud: lat })
+  })
+  .then(r => r.json())
+  .then(data => {
+    try {
+    setLoading(false);
+    if (data.imagen_b64) {
+      const img = document.getElementById('solarImage');
+      img.src = 'data:image/png;base64,' + data.imagen_b64;
+      img.style.display = 'block';
+      document.getElementById('empty-solar').style.display = 'none';
+      document.getElementById('dlSolar').href = '/static/sunpath_diagram.png';
+      const a = document.createElement('a');
+      a.href = img.src;
+      a.download = `solar_lat${lat.toFixed(2)}.png`;
+      document.getElementById('dlSolar').onclick = e => { e.preventDefault(); a.click(); };
+    }
+    currentLatitud = lat;
+    if (grupoSem1 || grupoSem2) actualizarInclinacionEsfera(lat);
+    try { buildSunArcs(lat); } catch(e) { console.warn('buildSunArcs error:', e); }
+    showToast(`Diagrama solar generado (lat ${lat.toFixed(2)}°)`, 'success');
+    } catch(innerErr) { console.error('ERROR en then:', innerErr); setLoading(false); showToast('Error interno JS: ' + innerErr.message, 'error'); }
+  })
+  .catch(err => { setLoading(false); console.error('enviarLatitud fetch error:', err); showToast('Error al generar diagrama', 'error'); });
+}
+
+// ── EPW ────────────────────────────────────────────────────────────────────────
+document.getElementById('cargarEpwButton').addEventListener('click', () =>
+  document.getElementById('epwInput').click());
+
+// ── Acceptability mode ────────────────────────────────────────────────────────
+var acceptMode = 90;
+var lastEpwFile = null;
+
+function setAcceptMode(mode) {
+  acceptMode = mode;
+  document.getElementById('btn90').classList.toggle('active', mode === 90);
+  document.getElementById('btn80').classList.toggle('active', mode === 80);
+  document.getElementById('btnMicro').classList.toggle('active', mode === 'micro');
+  if (lastEpwFile) submitEpw(lastEpwFile);
+}
+document.getElementById('btn90').addEventListener('click', function() { setAcceptMode(90); });
+document.getElementById('btn80').addEventListener('click', function() { setAcceptMode(80); });
+document.getElementById('btnMicro').addEventListener('click', function() { setAcceptMode('micro'); });
+document.getElementById('btn90').classList.add('active');
+
+function updateLegend(tempNeutraDict) {
+  if (!tempNeutraDict) return;
+  var vals = Object.values(tempNeutraDict).map(Number);
+  var tn = vals.reduce(function(a,b){return a+b;}, 0) / vals.length;
+  var half = acceptMode === 90 ? 2.5 : (acceptMode === 80 ? 3.5 : 1.25);
+  var step = 2.5;  // step is ALWAYS 2.5°C regardless of mode
+  var fmt = function(v) { return v.toFixed(1) + 'C'; };
+  document.getElementById('leg-neutral').textContent = fmt(tn-half) + ' a ' + fmt(tn+half);
+  document.getElementById('leg-lwarm').textContent  = fmt(tn+half) + ' a ' + fmt(tn+half+step);
+  document.getElementById('leg-warm').textContent   = fmt(tn+half+step) + ' a ' + fmt(tn+half+2*step);
+  document.getElementById('leg-hot1').textContent   = fmt(tn+half+2*step) + ' a ' + fmt(tn+half+3*step);
+  document.getElementById('leg-hot2').textContent   = '> ' + fmt(tn+half+3*step);
+  document.getElementById('leg-lcool').textContent  = fmt(tn-half-step) + ' a ' + fmt(tn-half);
+  document.getElementById('leg-cool').textContent   = fmt(tn-half-2*step) + ' a ' + fmt(tn-half-step);
+  document.getElementById('leg-cold').textContent   = '< ' + fmt(tn-half-2*step);
+  var modeLabel = acceptMode === 90 ? '90% aceptabilidad' : (acceptMode === 80 ? '80% aceptabilidad' : 'Micro ±1.25C');
+  document.getElementById('leg-note').textContent = modeLabel + '  |  T.Neutra aprox. ' + tn.toFixed(1) + 'C';
+}
+
+function submitEpw(file) {
+  var fd = new FormData();
+  fd.append('file', file);
+  fd.append('accept_mode', acceptMode);
+  setLoading(true, 'Procesando archivo EPW...');
+  fetch('/procesar-epw', { method: 'POST', body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      setLoading(false);
+      if (data.error) { showToast(data.error, 'error'); return; }
+
+      if (data.imagen_heatmap_b64) {
+        var img = document.getElementById('heatmapImage');
+        img.src = 'data:image/png;base64,' + data.imagen_heatmap_b64;
+        img.style.display = 'block';
+        document.getElementById('empty-heatmap').style.display = 'none';
+      }
+      if (data.imagen_mensual_b64) {
+        var img2 = document.getElementById('mensualImage');
+        img2.src = 'data:image/png;base64,' + data.imagen_mensual_b64;
+        img2.style.display = 'block';
+        document.getElementById('empty-mensual').style.display = 'none';
+      }
+      document.getElementById('dlHeatmap').href = '/descargar/tabla_hora_mes.png';
+      document.getElementById('dlMensual').href = '/descargar/tabla_temperaturas.png';
+      if (data.csv_url) {
+        var fname = data.csv_url.split('/').pop();
+        document.getElementById('dlCSV').href = '/descargar/' + fname;
+      }
+      document.getElementById('downloadStrip').classList.add('visible');
+      document.querySelector('[data-tab="heatmap"]').click();
+
+      if (data.latitud !== undefined && data.longitud !== undefined) {
+        currentLatitud = data.latitud;
+        enviarLatitud(data.latitud);
+        if (marker) map.removeLayer(marker);
+        marker = L.marker([data.latitud, data.longitud], { icon: markerIcon })
+          .addTo(map)
+          .bindPopup('<b style="font-size:11px;">' + (data.ciudad||'') + ' ' + (data.pais||'') + '</b>')
+          .openPopup();
+        map.setView([data.latitud, data.longitud], 8);
+        document.getElementById('latDisplay').textContent = data.latitud.toFixed(4) + 'deg';
+        document.getElementById('lonDisplay').textContent = data.longitud.toFixed(4) + 'deg';
+      }
+      if (data.temperatura_neutra) updateLegend(data.temperatura_neutra);
+      cargarEsferaSolar();
+      if (data.latitud !== undefined) {
+        buildSunArcs(data.latitud);
+        showToast('Simulacion solar lista', 'info');
+      }
+      var loc = data.ciudad ? data.ciudad + ', ' + data.pais : 'archivo';
+      showToast('EPW procesado: ' + loc, 'success');
+    })
+    .catch(function() { setLoading(false); showToast('Error al procesar EPW', 'error'); });
+}
+
+document.getElementById('epwInput').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  lastEpwFile = file;
+  submitEpw(file);
+});
+
+// ── THREE.js setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('viewer');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setClearColor(0x0d1117);
+renderer.setSize(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0d1117, 0.0035);
+
+const camera = new THREE.PerspectiveCamera(
+  45,
+  canvas.parentElement.clientWidth / canvas.parentElement.clientHeight,
+  0.1, 2000
+);
+camera.position.set(80, 80, 120);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 5;
+controls.maxDistance = 600;
+controls.target.set(0, 0, 0);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0x8892a4, 0.4);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.2);
+sunLight.position.set(80, 120, 60);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.near = 1;
+sunLight.shadow.camera.far = 800;
+sunLight.shadow.camera.left = sunLight.shadow.camera.bottom = -120;
+sunLight.shadow.camera.right = sunLight.shadow.camera.top = 120;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x3b82f6, 0.3);
+fillLight.position.set(-50, 30, -80);
+scene.add(fillLight);
+
+// Grid / ground plane
+const gridHelper = new THREE.GridHelper(
+  300, 60,
+  new THREE.Color(0x30363d),
+  new THREE.Color(0x21262d)
+);
+scene.add(gridHelper);
+
+// Ground shadow receiver
+const groundGeo = new THREE.PlaneGeometry(300, 300);
+const groundMat = new THREE.ShadowMaterial({ opacity: 0.25 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Compass rose (N marker)
+const compassGroup = new THREE.Group();
+const arrowGeo = new THREE.ConeGeometry(1.2, 5, 8);
+const arrowMat = new THREE.MeshBasicMaterial({ color: 0xf97316 });
+const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
+arrowMesh.position.set(0, 0.5, -18);
+compassGroup.add(arrowMesh);
+const nLabel = createTextSprite('N', '#f97316');
+nLabel.position.set(0, 4, -20);
+compassGroup.add(nLabel);
+scene.add(compassGroup);
+
+function createTextSprite(text, color = '#ffffff') {
+  const canvas2 = document.createElement('canvas');
+  canvas2.width = 64; canvas2.height = 64;
+  const ctx = canvas2.getContext('2d');
+  ctx.fillStyle = color;
+  ctx.font = 'bold 36px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 32, 32);
+  const texture = new THREE.CanvasTexture(canvas2);
+  const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(6, 6, 1);
+  return sprite;
+}
+
+// Model container (rotates with north orientation)
+const modelGroup = new THREE.Group();
+scene.add(modelGroup);
+
+// Solar sphere group
+let grupoEsfera = null;
+let grupoSem1 = null;   // Ene-Jun sphere
+let grupoSem2 = null;   // Jul-Dic sphere
+let lastCsvText = null;   // store CSV so we can rebuild on semestre toggle
+let semestreActual = 1;   // 1 = Ene-Jun, 2 = Jul-Dic
+let currentLatitud = 0;
+let esferaVisible = false;
+
+// ── Model orientation (North slider) ─────────────────────────────────────────
+const northSlider = document.getElementById('northSlider');
+const northValue = document.getElementById('northValue');
+northSlider.addEventListener('input', () => {
+  const angle = +northSlider.value;
+  northValue.textContent = angle + '°';
+  modelGroup.rotation.y   =  THREE.MathUtils.degToRad(angle);
+  compassGroup.rotation.y = -THREE.MathUtils.degToRad(angle);
+  // La esfera solar rota en sentido contrario al modelo:
+  // si el edificio gira +angle, el sol (E/W) se desplaza -angle respecto al edificio
+  const yRad = -THREE.MathUtils.degToRad(angle);
+  if (grupoSem1) grupoSem1.rotation.y = yRad;
+  if (grupoSem2) grupoSem2.rotation.y = yRad;
+});
+
+document.getElementById('rotateCW').addEventListener('click', () => {
+  northSlider.value = ((+northSlider.value + 90) % 360);
+  northSlider.dispatchEvent(new Event('input'));
+});
+document.getElementById('rotateCCW').addEventListener('click', () => {
+  northSlider.value = ((+northSlider.value - 90 + 360) % 360);
+  northSlider.dispatchEvent(new Event('input'));
+});
+
+// ── X axis (pitch / inclinación) ─────────────────────────────────────────────
+const rotXSlider = document.getElementById('rotXSlider');
+const rotXValue  = document.getElementById('rotXValue');
+rotXSlider.addEventListener('input', () => {
+  rotXValue.textContent = rotXSlider.value + '°';
+  modelGroup.rotation.x = THREE.MathUtils.degToRad(+rotXSlider.value);
+  repositionModelOnGround();
+});
+document.getElementById('rotXPlus').addEventListener('click', () => {
+  rotXSlider.value = Math.min(180, +rotXSlider.value + 90);
+  rotXSlider.dispatchEvent(new Event('input'));
+});
+document.getElementById('rotXMinus').addEventListener('click', () => {
+  rotXSlider.value = Math.max(-180, +rotXSlider.value - 90);
+  rotXSlider.dispatchEvent(new Event('input'));
+});
+
+// ── Z axis (roll / ladeado) ───────────────────────────────────────────────────
+const rotZSlider = document.getElementById('rotZSlider');
+const rotZValue  = document.getElementById('rotZValue');
+rotZSlider.addEventListener('input', () => {
+  rotZValue.textContent = rotZSlider.value + '°';
+  modelGroup.rotation.z = THREE.MathUtils.degToRad(+rotZSlider.value);
+  repositionModelOnGround();
+});
+document.getElementById('rotZPlus').addEventListener('click', () => {
+  rotZSlider.value = Math.min(180, +rotZSlider.value + 90);
+  rotZSlider.dispatchEvent(new Event('input'));
+});
+document.getElementById('rotZMinus').addEventListener('click', () => {
+  rotZSlider.value = Math.max(-180, +rotZSlider.value - 90);
+  rotZSlider.dispatchEvent(new Event('input'));
+});
+
+// After any rotation, re-snap bottom of model group to y=0
+function repositionModelOnGround() {
+  if (!modelGroup.children.length) return;
+  modelGroup.position.y = 0;
+  modelGroup.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(modelGroup);
+  if (box.min.y < 0) modelGroup.position.y = -box.min.y;
+}
+
+// ── Camera views ──────────────────────────────────────────────────────────────
+function lerpCamera(target, duration = 600) {
+  const start = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+  const t0 = performance.now();
+  function step(t) {
+    const progress = Math.min((t - t0) / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    camera.position.set(
+      start.x + (target.x - start.x) * ease,
+      start.y + (target.y - start.y) * ease,
+      start.z + (target.z - start.z) * ease
+    );
+    controls.update();
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+document.getElementById('viewTop').addEventListener('click', () => {
+  camera.up.set(0, 0, -1);
+  controls.target.set(0, 0, 0);
+  lerpCamera({ x: 0, y: 200, z: 1 });
+  setTimeout(() => controls.update(), 700);
+});
+document.getElementById('viewFront').addEventListener('click', () => {
+  camera.up.set(0, 1, 0); controls.target.set(0, 0, 0);
+  lerpCamera({ x: 0, y: 30, z: 150 });
+  setTimeout(() => controls.update(), 700);
+});
+document.getElementById('viewIso').addEventListener('click', () => {
+  camera.up.set(0, 1, 0); controls.target.set(0, 0, 0);
+  lerpCamera({ x: 80, y: 80, z: 120 });
+  setTimeout(() => controls.update(), 700);
+});
+
+document.getElementById('resetModel').addEventListener('click', () => {
+  modelGroup.position.set(0, 0, 0);
+  modelGroup.rotation.set(0, 0, 0);
+  northSlider.value = 0; northValue.textContent = '0°';
+  rotXSlider.value = 0;  rotXValue.textContent = '0°';
+  rotZSlider.value = 0;  rotZValue.textContent = '0°';
+  compassGroup.rotation.set(0, 0, 0);
+  lerpCamera({ x: 80, y: 80, z: 120 });
+});
+
+// ── Toggle solar sphere ───────────────────────────────────────────────────────
+document.getElementById('btnSemestre').addEventListener('click', function() {
+  if (!lastCsvText) { showToast('Carga un EPW primero', 'error'); return; }
+  const nuevo = semestreActual === 1 ? 2 : 1;
+  setSemestre(nuevo, true);
+  showToast('Semestre: ' + (nuevo === 1 ? 'Ene–Jun' : 'Jul–Dic'), 'success');
+});
+
+document.getElementById('toggleSphere').addEventListener('click', () => {
+  esferaVisible = !esferaVisible;
+  document.getElementById('toggleSphere').textContent = esferaVisible ? 'Ocultar' : 'Mostrar';
+  if (grupoSem1) grupoSem1.visible = (semestreActual === 1) && esferaVisible;
+  if (grupoSem2) grupoSem2.visible = (semestreActual === 2) && esferaVisible;
+  grupoEsfera = semestreActual === 1 ? grupoSem1 : grupoSem2;
+});
+
+
+// ── Load OBJ / STL models onto the ground plane ───────────────────────────────
+function centerAndPlaceOnGround(object) {
+  // Remove previous models
+  while (modelGroup.children.length) modelGroup.remove(modelGroup.children[0]);
+
+  // Reset any existing rotation sliders so we measure raw geometry
+  object.rotation.set(0, 0, 0);
+  object.position.set(0, 0, 0);
+  object.updateMatrixWorld(true);
+
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3());
+
+  // ── Auto-scale: fit inside solar sphere if model is too large ────────────
+  // Solar sphere radius = 60. Target: footprint fits inside ~80% of diameter (96 units)
+  const MAX_FOOTPRINT = 96;  // max diagonal of base footprint
+  const footprint = Math.sqrt(size.x * size.x + size.z * size.z);
+  if (footprint > MAX_FOOTPRINT) {
+    const scaleFactor = MAX_FOOTPRINT / footprint;
+    object.scale.setScalar(scaleFactor);
+    object.updateMatrixWorld(true);
+    // Recompute box after scale
+    box.setFromObject(object);
+    size.copy(box.getSize(new THREE.Vector3()));
+  }
+  // ── End auto-scale ────────────────────────────────────────────────────────
+
+  const center = box.getCenter(new THREE.Vector3());
+
+  // Center horizontally
+  object.position.x -= center.x;
+  object.position.z -= center.z;
+  // Always place bottom face exactly at y=0 (above the grid)
+  object.position.y += (-box.min.y);
+
+  // Cast shadows
+  object.traverse(child => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  modelGroup.add(object);
+  document.getElementById('viewer-placeholder').classList.add('hidden');
+
+  // Adjust camera to fit
+  const maxDim = Math.max(size.x, size.y, size.z);
+  lerpCamera({ x: maxDim * 1.2, y: maxDim, z: maxDim * 1.5 });
+  controls.target.set(0, size.y / 2, 0);
+  showToast('Modelo cargado correctamente', 'success');
+}
+
+function loadOBJWithMTL(objFile, mtlFile) {
+  const mtlLoader = new THREE.MTLLoader();
+  mtlLoader.load(URL.createObjectURL(mtlFile), materials => {
+    materials.preload();
+    const objLoader = new THREE.OBJLoader();
+    objLoader.setMaterials(materials);
+    objLoader.load(URL.createObjectURL(objFile), obj => centerAndPlaceOnGround(obj));
+  });
+}
+
+function loadOBJ(objFile) {
+  new THREE.OBJLoader().load(URL.createObjectURL(objFile), obj => {
+    // Apply default material if none
+    obj.traverse(child => {
+      if (child.isMesh && (!child.material || !child.material.color)) {
+        child.material = new THREE.MeshStandardMaterial({ color: 0xb0b8c8, roughness: .7, metalness: .1 });
+      }
+    });
+    centerAndPlaceOnGround(obj);
+  });
+}
+
+function loadSTL(file) {
+  new THREE.STLLoader().load(URL.createObjectURL(file), geo => {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xb0b8c8, roughness: .7, metalness: .1 });
+    centerAndPlaceOnGround(new THREE.Mesh(geo, mat));
+  });
+}
+
+function handleFiles(files) {
+  let obj, mtl, stl;
+  for (const f of files) {
+    if (f.name.toLowerCase().endsWith('.obj')) obj = f;
+    else if (f.name.toLowerCase().endsWith('.mtl')) mtl = f;
+    else if (f.name.toLowerCase().endsWith('.stl')) stl = f;
+  }
+  if (obj && mtl) loadOBJWithMTL(obj, mtl);
+  else if (obj) loadOBJ(obj);
+  if (stl) loadSTL(stl);
+}
+
+document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
+
+// ── Drag-drop ─────────────────────────────────────────────────────────────────
+const rightPanel = document.getElementById('right-panel');
+const dragOverlay = document.getElementById('drag-overlay');
+let dragCounter = 0;
+rightPanel.addEventListener('dragenter', e => { e.preventDefault(); dragCounter++; dragOverlay.classList.add('visible'); });
+rightPanel.addEventListener('dragleave', () => { if (--dragCounter <= 0) { dragCounter = 0; dragOverlay.classList.remove('visible'); } });
+rightPanel.addEventListener('dragover', e => e.preventDefault());
+rightPanel.addEventListener('drop', e => {
+  e.preventDefault(); dragCounter = 0; dragOverlay.classList.remove('visible');
+  handleFiles(e.dataTransfer.files);
+});
+
+// ── Solar sphere (esfera de colores EPW) ──────────────────────────────────────
+function cargarEsferaSolar() {
+  fetch('/uploads/pintar_celeste.csv')
+    .then(r => r.text())
+    .then(text => {
+      lastCsvText = text;
+      construirEsfera(text, 1);  // builds both, shows sem1
+      // setSemestre called inside construirEsfera after parse completes
+    })
+    .catch(err => console.warn('Sin datos EPW para esfera:', err));
+}
+
+function _buildGrupo(arcos, colorDict, semestre, latitud) {
+  const COMFORT_COLOR = '#d1fae5';
+  const TOTAL = 24;
+  const grupo = new THREE.Group();
+  grupo.name = 'esfera_sem' + semestre;
+  for (let i = 0; i < arcos.length - 1; i++) {
+    let mes;
+    if (semestre === 2) {
+      mes = 12 - Math.floor(i / 2);  // Dic→Jul invertido
+    } else {
+      mes = Math.floor(i / 2) + 1;   // Ene→Jun
+    }
+    for (let j = 0; j < TOTAL; j++) {
+      let hex = colorDict[`${mes},${j}`];
+      if (!hex || hex === 'white' || hex === '#374151') hex = COMFORT_COLOR;
+      const v = [arcos[i][j], arcos[i][j+1], arcos[i+1][j+1], arcos[i+1][j]];
+      const verts = v.flatMap(p => [p.x, p.y, p.z]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      geo.setIndex([0,1,2, 0,2,3]);
+      geo.computeVertexNormals();
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(hex),
+        side: THREE.DoubleSide, transparent: true, opacity: 0.88
+      });
+      grupo.add(new THREE.Mesh(geo, mat));
+    }
+  }
+  grupo.rotation.z = -Math.PI / 2;
+  grupo.rotation.x = THREE.MathUtils.degToRad(latitud);
+  grupo.rotation.y = -THREE.MathUtils.degToRad(+northSlider.value);
+  return grupo;
+}
+
+// Activa el semestre correcto y actualiza el botón
+function setSemestre(sem, updateBtn) {
+  semestreActual = sem;
+  if (grupoSem1) grupoSem1.visible = (sem === 1) && esferaVisible;
+  if (grupoSem2) grupoSem2.visible = (sem === 2) && esferaVisible;
+  grupoEsfera = sem === 1 ? grupoSem1 : grupoSem2;
+  if (updateBtn) {
+    const btn = document.getElementById('btnSemestre');
+    btn.textContent = sem === 1 ? 'Ene–Jun' : 'Jul–Dic';
+    btn.classList.toggle('active', sem === 2);
+  }
+}
+
+function construirEsfera(csvText, semestre) {
+  // Remove old groups
+  if (grupoSem1) { scene.remove(grupoSem1); grupoSem1 = null; }
+  if (grupoSem2) { scene.remove(grupoSem2); grupoSem2 = null; }
+  grupoEsfera = null;
+
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 3) return;
+
+  const latStr = lines[1].split(',')[0].replace('Latitud:', '').trim();
+  const latitud = parseFloat(latStr);
+  if (isNaN(latitud)) return;
+
+  const csvClean = [lines[0], ...lines.slice(2)].join('\n');
+  Papa.parse(csvClean, {
+    header: true, skipEmptyLines: true,
+    complete({ data }) {
+      const colorDict = {};
+      data.forEach(row => {
+        const mes = parseInt(row.MES), hora = parseInt(row.HORA);
+        if (!isNaN(mes) && !isNaN(hora))
+          colorDict[`${mes},${hora}`] = (row.COLOR || '').trim().toLowerCase();
+      });
+
+      const RADIO = 60;
+      const TOTAL = 24;
+      const angulos = [];
+      for (let m = 0; m <= 12; m++) angulos.push(66.6 + m * (113.6 - 66.6) / 12);
+      const radianes = angulos.map(a => THREE.MathUtils.degToRad(a));
+
+      const arcos = radianes.map(phi => {
+        const pts = [];
+        for (let i = 0; i <= TOTAL; i++) {
+          const theta = (i / TOTAL) * Math.PI * 2;
+          pts.push(new THREE.Vector3(
+            RADIO * Math.sin(phi) * Math.cos(theta),
+            RADIO * Math.sin(phi) * Math.sin(theta),
+            RADIO * Math.cos(phi)
+          ));
+        }
+        return pts;
+      });
+
+      // Build both semesters
+      grupoSem1 = _buildGrupo(arcos, colorDict, 1, latitud);
+      grupoSem2 = _buildGrupo(arcos, colorDict, 2, latitud);
+      // Apply current scale from slider
+      const currentScale = parseFloat(document.getElementById('sphereScaleSlider').value);
+      grupoSem1.scale.setScalar(currentScale);
+      grupoSem2.scale.setScalar(currentScale);
+      scene.add(grupoSem1);
+      scene.add(grupoSem2);
+
+      // Show the requested semester
+      setSemestre(semestre, false);
+    }
+  });
+}
+
+function actualizarInclinacionEsfera(lat) {
+  const latRad = THREE.MathUtils.degToRad(lat);
+  if (grupoSem1) grupoSem1.rotation.x = latRad;
+  if (grupoSem2) grupoSem2.rotation.x = latRad;
+  grupoEsfera = semestreActual === 1 ? grupoSem1 : grupoSem2;
+}
+
+// ── Sun simulation ───────────────────────────────────────────────────────────
+// The sun travels 365 day-paths across the solar diagram.
+// Each day-path = one full arc (0..24h) at a slightly different declination.
+// We precompute all 365 arcs in 3D (same sphere space as grupoEsfera),
+// then a moving DirectionalLight follows the current position.
+
+let sunSimRunning = false;
+let sunSimFrame   = null;
+let sunDayIndex   = 0;      // 0..364
+let sunHourFrac   = 0;      // 0..1 within the day arc
+let sunArcs365    = null;   // array[365] of array[steps] of THREE.Vector3
+let sunLatRad     = 0;
+
+// Visible sun sphere
+const sunSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(2.5, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xfff4e0 })
+);
+sunSphere.visible = false;
+scene.add(sunSphere);
+
+// Sun glow sprite
+const sunGlowCanvas = document.createElement('canvas');
+sunGlowCanvas.width = sunGlowCanvas.height = 128;
+(function(){
+  const ctx = sunGlowCanvas.getContext('2d');
+  const g = ctx.createRadialGradient(64,64,2,64,64,64);
+  g.addColorStop(0,   'rgba(255,240,180,0.9)');
+  g.addColorStop(0.3, 'rgba(255,200,80,0.4)');
+  g.addColorStop(1,   'rgba(255,150,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,128,128);
+})();
+const sunGlowTex = new THREE.CanvasTexture(sunGlowCanvas);
+const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: sunGlowTex, transparent: true, opacity: 0.7, depthWrite: false
+}));
+sunGlow.scale.set(25, 25, 1);
+sunGlow.visible = false;
+scene.add(sunGlow);
+
+// Moon/night sphere (blue)
+const moonSphere = new THREE.Mesh(
+  new THREE.SphereGeometry(1.8, 12, 12),
+  new THREE.MeshBasicMaterial({ color: 0x93c5fd })
+);
+moonSphere.visible = false;
+scene.add(moonSphere);
+
+// Dedicated sun light (replaces static sunLight when simulation runs)
+const simSunLight = new THREE.DirectionalLight(0xfff4e0, 0);
+simSunLight.castShadow = true;
+simSunLight.shadow.mapSize.set(2048, 2048);
+simSunLight.shadow.camera.near = 1;
+simSunLight.shadow.camera.far  = 800;
+simSunLight.shadow.camera.left = simSunLight.shadow.camera.bottom = -150;
+simSunLight.shadow.camera.right = simSunLight.shadow.camera.top   =  150;
+scene.add(simSunLight);
+
+const simNightLight = new THREE.DirectionalLight(0x1e3a5f, 0);
+scene.add(simNightLight);
+
+// Ambient that shifts from warm day to cool night
+const simAmbient = new THREE.AmbientLight(0x8892a4, 0);
+scene.add(simAmbient);
+
+function buildSunArcs(latDeg) {
+  // Build 365 arcs in the same coordinate space as grupoEsfera BEFORE its rotations.
+  // grupoEsfera.rotation.z = -PI/2, grupoEsfera.rotation.x = latRad
+  // We apply the inverse to get world positions.
+  sunLatRad = THREE.MathUtils.degToRad(latDeg);
+  const RADIO  = 60;
+  const STEPS  = 48;   // points per day arc
+  const arcs   = [];
+
+  for (let day = 0; day < 365; day++) {
+    const N = day + 1;
+    const decl = 23.45 * Math.sin(THREE.MathUtils.degToRad(360 * (284 + N) / 365));
+    const declRad = THREE.MathUtils.degToRad(decl);
+    const arc = [];
+
+    for (let s = 0; s <= STEPS; s++) {
+      const hourAngle = ((s / STEPS) * 24 - 12) * 15;  // degrees
+      const H = THREE.MathUtils.degToRad(hourAngle);
+
+      // Solar altitude
+      const sinAlt = Math.cos(declRad) * Math.cos(sunLatRad) * Math.cos(H)
+                   + Math.sin(declRad) * Math.sin(sunLatRad);
+      const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt)));  // radians
+
+      // Solar azimuth (from North, clockwise)
+      const cosAz = (Math.sin(declRad) * Math.cos(sunLatRad)
+                   - Math.cos(declRad) * Math.sin(sunLatRad) * Math.cos(H))
+                   / Math.cos(alt + 1e-9);
+      let az = Math.acos(Math.max(-1, Math.min(1, cosAz)));
+      if (hourAngle > 0) az = 2 * Math.PI - az;
+
+      // Convert to Cartesian on sphere of radius RADIO
+      // az measured from N clockwise → x = sin(az), z = -cos(az), y = sin(alt)
+      const r = RADIO * Math.cos(alt);
+      const x = r * Math.sin(az);
+      const z = -r * Math.cos(az);
+      const y = RADIO * Math.sin(alt);
+
+      arc.push(new THREE.Vector3(x, y, z));
+    }
+    arcs.push(arc);
+  }
+  sunArcs365 = arcs;
+
+  // Rebuild analemmas and north arrow after new lat
+  buildAnalemmas();
+  updateDayArc(sunDayIndex);
+  updateAnalemmaMarkers(sunDayIndex);
+}
+
+// ── Analemmas & Day Arc ───────────────────────────────────────────────────────
+let analemmaGroup = null;
+let dayArcLine    = null;
+let sunDirArrow   = null;   // follows the sun during simulation
+
+function getSphereScale() {
+  return parseFloat(document.getElementById('sphereScaleSlider').value) || 1.0;
+}
+
+// ── Equation of Time — returns correction in minutes for day N (1..365) ──────
+function equationOfTime(N) {
+  // Spencer formula (minutes)
+  const B = (360 / 365) * (N - 81) * Math.PI / 180;
+  return 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+}
+
+// ── Solar position for a given day + CLOCK hour (UTC local) ──────────────────
+function solarPosForClockHour(latRad, dayN, clockHour) {
+  const decl    = 23.45 * Math.sin((360 * (284 + dayN) / 365) * Math.PI / 180);
+  const declRad = decl * Math.PI / 180;
+
+  // Convert clock hour to solar hour using equation of time
+  // EoT in minutes → degrees (1 min = 0.25°)
+  const eot      = equationOfTime(dayN);          // minutes
+  const solarMin = clockHour * 60 + eot;          // solar minutes from midnight
+  const hourAngleDeg = (solarMin / 60 - 12) * 15; // degrees, 0 = solar noon
+  const H = hourAngleDeg * Math.PI / 180;
+
+  const sinAlt = Math.cos(declRad) * Math.cos(latRad) * Math.cos(H)
+               + Math.sin(declRad) * Math.sin(latRad);
+  const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt)));
+
+  const cosAz = (Math.sin(declRad) * Math.cos(latRad)
+               - Math.cos(declRad) * Math.sin(latRad) * Math.cos(H))
+               / (Math.cos(alt) + 1e-9);
+  let az = Math.acos(Math.max(-1, Math.min(1, cosAz)));
+  if (hourAngleDeg > 0) az = 2 * Math.PI - az;
+
+  return { alt, az };   // radians
+}
+
+function buildAnalemmas() {
+  if (analemmaGroup) { scene.remove(analemmaGroup); analemmaGroup = null; }
+  if (!sunArcs365) return;
+
+  const s     = getSphereScale();
+  const RADIO = 60;
+  const mat   = new THREE.LineBasicMaterial({ color: 0x991b1b, transparent: true, opacity: 0.70 });
+  analemmaGroup = new THREE.Group();
+
+  // Extend hour range for polar latitudes
+  const latDeg = Math.abs(THREE.MathUtils.radToDeg(sunLatRad));
+  const hourStart = latDeg > 60 ? 4 : (latDeg > 45 ? 5 : 6);
+  const hourEnd   = latDeg > 60 ? 20 : (latDeg > 45 ? 19 : 18);
+  for (let hour = hourStart; hour <= hourEnd; hour++) {
+    // Build raw above/below flags for all 365 days
+    const visible = [];
+    const rawPts  = [];
+    for (let day = 0; day < 365; day++) {
+      const { alt, az } = solarPosForClockHour(sunLatRad, day + 1, hour);
+      if (alt > 0.01) {
+        const r = RADIO * Math.cos(alt) * s;
+        visible.push(true);
+        rawPts.push(new THREE.Vector3(r * Math.sin(az), RADIO * Math.sin(alt) * s, -r * Math.cos(az)));
+      } else {
+        visible.push(false);
+        rawPts.push(null);
+      }
+    }
+
+    const totalVisible = visible.filter(Boolean).length;
+    if (totalVisible < 10) continue;
+
+    // If sun is always visible (circumpolar) → single closed loop
+    if (totalVisible === 365) {
+      const pts = rawPts.slice();
+      pts.push(pts[0].clone());
+      analemmaGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+      continue;
+    }
+
+    // Find a safe start index: a day where sun is below horizon
+    // so that looping through guarantees we never split a continuous segment
+    let startIdx = 0;
+    for (let i = 0; i < 365; i++) {
+      if (!visible[i]) { startIdx = i; break; }
+    }
+
+    // Now iterate from startIdx, collect contiguous segments
+    const segments = [];
+    let currentSeg = [];
+    for (let k = 0; k < 365; k++) {
+      const i = (startIdx + k) % 365;
+      if (visible[i]) {
+        currentSeg.push(rawPts[i]);
+      } else {
+        if (currentSeg.length >= 2) { segments.push(currentSeg); }
+        currentSeg = [];
+      }
+    }
+    if (currentSeg.length >= 2) segments.push(currentSeg);
+
+    // Draw each segment; if only one segment close it into a loop
+    for (const seg of segments) {
+      if (seg.length < 2) continue;
+      if (segments.length === 1) seg.push(seg[0].clone()); // close loop
+      analemmaGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(seg), mat));
+    }
+  }
+
+  analemmaGroup.visible = esferaVisible;
+  scene.add(analemmaGroup);
+}
+
+function updateDayArc(dayIdx) {
+  if (dayArcLine) { scene.remove(dayArcLine); dayArcLine = null; }
+  if (!sunArcs365) return;
+
+  const s   = getSphereScale();
+  const arc = sunArcs365[dayIdx];
+
+  // Collect segments — handle midnight sun (all above) and polar night (none above)
+  const segments = [];
+  let currentSeg = [];
+  for (let i = 0; i <= 48; i++) {
+    if (!arc[i]) continue;
+    const p = arc[i].clone().multiplyScalar(s);
+    if (p.y > 0.1) {
+      currentSeg.push(p);
+    } else {
+      if (currentSeg.length >= 2) segments.push(currentSeg);
+      currentSeg = [];
+    }
+  }
+  if (currentSeg.length >= 2) segments.push(currentSeg);
+
+  if (segments.length === 0) return;
+
+  dayArcLine = new THREE.Group();
+  const mat  = new THREE.LineBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.95 });
+  for (const seg of segments) {
+    const geo = new THREE.BufferGeometry().setFromPoints(seg);
+    dayArcLine.add(new THREE.Line(geo, mat));
+  }
+
+  dayArcLine.visible = esferaVisible;
+  scene.add(dayArcLine);
+}
+
+
+// ── Analema hour markers (move with simulation day) ───────────────────────────
+let analemmaMarkers = null;
+
+function updateAnalemmaMarkers(dayIdx) {
+  if (analemmaMarkers) { scene.remove(analemmaMarkers); analemmaMarkers = null; }
+  if (!sunArcs365 || !esferaVisible) return;
+
+  const s     = getSphereScale();
+  const RADIO = 60;
+  const N     = dayIdx + 1;
+  analemmaMarkers = new THREE.Group();
+
+  const latDeg    = Math.abs(THREE.MathUtils.radToDeg(sunLatRad));
+  const hourStart = latDeg > 60 ? 4 : (latDeg > 45 ? 5 : 6);
+  const hourEnd   = latDeg > 60 ? 20 : (latDeg > 45 ? 19 : 18);
+
+  for (let hour = hourStart; hour <= hourEnd; hour++) {
+    const { alt, az } = solarPosForClockHour(sunLatRad, N, hour);
+    if (alt <= 0.01) continue;
+
+    const r  = RADIO * Math.cos(alt) * s;
+    const p  = new THREE.Vector3(r * Math.sin(az), RADIO * Math.sin(alt) * s, -r * Math.cos(az));
+
+    // Dot exactly on the analemma
+    const dotGeo = new THREE.SphereGeometry(1.2 * s, 8, 8);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0x991b1b });
+    const dot    = new THREE.Mesh(dotGeo, dotMat);
+    dot.position.copy(p);
+    analemmaMarkers.add(dot);
+
+    // Label sprite slightly offset outward
+    const sprite = makeHourSprite(String(hour), '#b91c1c');
+    const dir    = p.clone().normalize();
+    sprite.position.copy(p).addScaledVector(dir, 3.5 * s);
+    sprite.scale.set(5 * s, 2.5 * s, 1);
+    analemmaMarkers.add(sprite);
+  }
+
+  analemmaMarkers.visible = esferaVisible;
+  scene.add(analemmaMarkers);
+}
+
+// Canvas sprite helper for hour labels
+function makeHourSprite(text, color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 64, 32);
+  ctx.fillStyle = color;
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 32, 16);
+  const tex = new THREE.CanvasTexture(canvas);
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+}
+
+function updateSunDirArrow(pos) {
+  if (sunDirArrow) { scene.remove(sunDirArrow); sunDirArrow = null; }
+  // Only show when sun is above horizon AND sphere is visible
+  if (!esferaVisible || pos.y <= 0) return;
+  const origin = new THREE.Vector3(0, 0, 0);
+  const len    = pos.length();
+  if (len < 1) return;
+  const dir      = pos.clone().normalize();
+  // Arrow extends 40% beyond the sphere surface for visibility
+  const arrowLen = len * 1.4;
+  sunDirArrow = new THREE.ArrowHelper(dir, origin, arrowLen, 0x60a5fa, arrowLen * 0.10, arrowLen * 0.05);
+  scene.add(sunDirArrow);
+}
+
+// Update analemma + day arc visibility when sphere is toggled
+document.getElementById('toggleSphere').addEventListener('click', () => {
+  setTimeout(() => {
+    if (analemmaGroup)    analemmaGroup.visible    = esferaVisible;
+    if (dayArcLine)       dayArcLine.visible       = esferaVisible;
+    if (analemmaMarkers)  analemmaMarkers.visible  = esferaVisible;
+    if (!esferaVisible && sunDirArrow) { scene.remove(sunDirArrow); sunDirArrow = null; }
+  }, 0);
+});
+
+// ── Sphere scale slider ───────────────────────────────────────────────────────
+document.getElementById('sphereScaleSlider').addEventListener('input', function() {
+  const s = parseFloat(this.value);
+  document.getElementById('sphereScaleValue').textContent = s.toFixed(1) + '×';
+  if (grupoSem1) grupoSem1.scale.setScalar(s);
+  if (grupoSem2) grupoSem2.scale.setScalar(s);
+  buildAnalemmas();
+  updateDayArc(sunDayIndex);
+  updateAnalemmaMarkers(sunDayIndex);
+});
+
+function getSunWorldPos(dayIdx, hourFrac) {
+  if (!sunArcs365) return new THREE.Vector3(0, 80, 0);
+  const arc  = sunArcs365[dayIdx];
+  const t    = hourFrac * (arc.length - 1);
+  const i    = Math.floor(t);
+  const f    = t - i;
+  const p1   = arc[Math.min(i,   arc.length-1)];
+  const p2   = arc[Math.min(i+1, arc.length-1)];
+  const pos  = p1.clone().lerp(p2, f);
+  // Scale sun position to match current sphere scale
+  const s = parseFloat(document.getElementById('sphereScaleSlider').value) || 1.0;
+  return pos.multiplyScalar(s);
+}
+
+function isSunAboveHorizon(pos) {
+  return pos.y > 0;
+}
+
+const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const DAYS_IN_MONTH = [31,28,31,30,31,30,31,31,30,31,30,31];
+function dayToDateStr(dayIdx) {
+  let d = dayIdx, m = 0;
+  while (m < 12 && d >= DAYS_IN_MONTH[m]) { d -= DAYS_IN_MONTH[m]; m++; }
+  return `${MONTH_NAMES[m]} ${d+1}`;
+}
+
+function updateSunLabel(dayIdx, hourFrac) {
+  const h = hourFrac * 24;
+  const hh = String(Math.floor(h)).padStart(2,'0');
+  const mm = String(Math.floor((h % 1) * 60)).padStart(2,'0');
+  document.getElementById('sunDateLabel').textContent =
+    `${dayToDateStr(dayIdx)} · ${hh}:${mm}h`;
+}
+
+// Speed: frames per simulation tick
+// At speed 3 we advance ~1 day every ~1.5s at 60fps
+let sunLastTime = 0;
+function stepSun(timestamp) {
+  if (!sunSimRunning) return;
+  const speed   = +document.getElementById('sunSpeedSlider').value;
+  const elapsed = timestamp - sunLastTime;
+  sunLastTime   = timestamp;
+
+  // Advance: each "day" has 48 steps. At speed=1 → 0.3 steps/frame ~5s/day
+  // At speed=10 → 3 steps/frame ~0.5s/day  → full 365 days in ~3min at speed 3
+  const stepsPerFrame = speed * 0.3;
+  const STEPS = 48;
+
+  sunHourFrac += stepsPerFrame / STEPS;
+  if (sunHourFrac >= 1) {
+    sunHourFrac -= 1;
+    sunDayIndex = (sunDayIndex + 1) % 365;
+  }
+
+  const pos = getSunWorldPos(sunDayIndex, sunHourFrac);
+  const above = isSunAboveHorizon(pos);
+
+  // Scale sun to scene — grupoEsfera is at world origin, same radius
+  const worldPos = pos.clone();
+
+  if (above) {
+    // Daytime
+    sunSphere.position.copy(worldPos);
+    sunSphere.visible = true;
+    sunGlow.position.copy(worldPos);
+    sunGlow.visible = true;
+    moonSphere.visible = false;
+
+    // Sun elevation ratio 0..1
+    const elevRatio = Math.min(pos.y / 60, 1);
+
+    // Warm day light from sun position
+    simSunLight.position.copy(worldPos);
+    simSunLight.intensity = 0.6 + elevRatio * 0.9;
+    const warm = new THREE.Color().setHSL(0.1 - elevRatio * 0.05, 0.9, 0.7 - elevRatio * 0.2);
+    simSunLight.color = warm;
+    simNightLight.intensity = 0;
+
+    // Ambient warm
+    simAmbient.intensity = 0.3 + elevRatio * 0.25;
+    simAmbient.color.setHSL(0.08, 0.5, 0.6);
+
+    // Glow size varies with elevation
+    const gs = 15 + elevRatio * 20;
+    sunGlow.scale.set(gs, gs, 1);
+
+    // Static sun off
+    sunLight.intensity = 0;
+    ambientLight.intensity = 0;
+  } else {
+    // Night
+    sunSphere.visible = false;
+    sunGlow.visible   = false;
+    moonSphere.position.copy(worldPos.clone().negate().normalize().multiplyScalar(55));
+    moonSphere.visible = true;
+
+    simSunLight.intensity  = 0;
+    simNightLight.position.copy(worldPos.clone().negate());
+    simNightLight.intensity = 0.35;
+    simNightLight.color.set(0x1e3a5f);
+
+    simAmbient.intensity = 0.15;
+    simAmbient.color.set(0x1e2a4a);
+
+    sunLight.intensity    = 0;
+    ambientLight.intensity = 0;
+  }
+
+  syncSemestreConDia(sunDayIndex);
+  updateDayArc(sunDayIndex);
+  updateAnalemmaMarkers(sunDayIndex);
+  updateSunDirArrow(worldPos);
+  updateSunLabel(sunDayIndex, sunHourFrac);
+  sunSimFrame = requestAnimationFrame(stepSun);
+}
+
+// Sincroniza el semestre de la esfera con el día de simulación
+function syncSemestreConDia(dayIndex) {
+  if (!grupoSem1 || !grupoSem2) return;
+  // DAYS_ACCUM[6] = 181 (primer día de Julio = día 182)
+  const semNuevo = dayIndex < 181 ? 1 : 2;
+  if (semNuevo !== semestreActual) setSemestre(semNuevo, true);
+}
+
+function startSunSim() {
+  if (!sunArcs365) {
+    showToast('Carga un EPW primero para activar la simulación', 'error'); return;
+  }
+  sunSimRunning = true;
+  sunLastTime   = performance.now();
+  sunLight.intensity    = 0;
+  ambientLight.intensity = 0;
+  document.getElementById('sunPlayBtn').style.opacity = '0.5';
+  sunSimFrame = requestAnimationFrame(stepSun);
+}
+
+function stopSunSim() {
+  sunSimRunning = false;
+  if (sunSimFrame) { cancelAnimationFrame(sunSimFrame); sunSimFrame = null; }
+  sunSphere.visible  = false;
+  sunGlow.visible    = false;
+  moonSphere.visible = false;
+  simSunLight.intensity   = 0;
+  simNightLight.intensity = 0;
+  simAmbient.intensity    = 0;
+  sunLight.intensity    = 1.2;
+  ambientLight.intensity = 0.4;
+  document.getElementById('sunPlayBtn').style.opacity = '1';
+  document.getElementById('sunDateLabel').textContent = 'Día 1 · 00:00h';
+  sunDayIndex = 0; sunHourFrac = 0;
+}
+
+// ── Integrated date/hour controls — update sun position on any change ────────
+const DAYS_ACCUM = [0,31,59,90,120,151,181,212,243,273,304,334];
+
+function applyManualPosition() {
+  if (!sunArcs365) return;
+  var month   = parseInt(document.getElementById('sunMonthSel').value);
+  var dayNum  = Math.max(1, Math.min(31, parseInt(document.getElementById('sunDayInput').value) || 1));
+  var hour    = parseFloat(document.getElementById('sunHourSlider').value);
+  var maxDay  = DAYS_IN_MONTH[month];
+  var clamped = Math.min(dayNum, maxDay) - 1;
+  sunDayIndex = DAYS_ACCUM[month] + clamped;
+  sunHourFrac = hour / 24;
+
+  var pos   = getSunWorldPos(sunDayIndex, sunHourFrac);
+  var above = isSunAboveHorizon(pos);
+
+  if (above) {
+    sunSphere.position.copy(pos); sunSphere.visible = true;
+    sunGlow.position.copy(pos);   sunGlow.visible   = true;
+    moonSphere.visible = false;
+    var elevRatio = Math.min(pos.y / 60, 1);
+    simSunLight.position.copy(pos);
+    simSunLight.intensity = 0.6 + elevRatio * 0.9;
+    simSunLight.color.setHSL(0.1 - elevRatio * 0.05, 0.9, 0.7 - elevRatio * 0.2);
+    simNightLight.intensity = 0;
+    simAmbient.intensity = 0.3 + elevRatio * 0.25;
+    simAmbient.color.setHSL(0.08, 0.5, 0.6);
+    sunLight.intensity = 0; ambientLight.intensity = 0;
+  } else {
+    sunSphere.visible = false; sunGlow.visible = false;
+    moonSphere.position.copy(pos.clone().negate().normalize().multiplyScalar(55));
+    moonSphere.visible = true;
+    simSunLight.intensity = 0;
+    simNightLight.position.copy(pos.clone().negate());
+    simNightLight.intensity = 0.35;
+    simNightLight.color.set(0x1e3a5f);
+    simAmbient.intensity = 0.15; simAmbient.color.set(0x1e2a4a);
+    sunLight.intensity = 0; ambientLight.intensity = 0;
+  }
+  syncSemestreConDia(sunDayIndex);
+  updateDayArc(sunDayIndex);
+  updateAnalemmaMarkers(sunDayIndex);
+  updateSunDirArrow(pos);
+  updateSunLabel(sunDayIndex, sunHourFrac);
+}
+
+// Hour slider display + live position
+document.getElementById('sunHourSlider').addEventListener('input', function() {
+  var h  = parseFloat(this.value);
+  var hh = String(Math.floor(h)).padStart(2,'0');
+  var mm = String(Math.round((h % 1) * 60)).padStart(2,'0');
+  document.getElementById('sunHourDisplay').textContent = hh + ':' + mm;
+  applyManualPosition();
+});
+
+// Month/day also update position live
+document.getElementById('sunMonthSel').addEventListener('change', applyManualPosition);
+document.getElementById('sunDayInput').addEventListener('input', applyManualPosition);
+
+document.getElementById('sunPlayBtn').addEventListener('click', startSunSim);
+document.getElementById('sunStopBtn').addEventListener('click', stopSunSim);
+document.getElementById('sunSpeedSlider').addEventListener('input', () => {
+  document.getElementById('sunSpeedValue').textContent =
+    document.getElementById('sunSpeedSlider').value + '×';
+});
+
+// ── Lightbox ─────────────────────────────────────────────────────────────────
+(function() {
+  var lb = document.getElementById('lightbox');
+  var lbImg = document.getElementById('lightbox-img');
+  var ids = ['solarImage','heatmapImage','mensualImage'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.cursor = 'zoom-in';
+    el.addEventListener('click', function() {
+      lbImg.src = el.src;
+      lb.style.display = 'flex';
+    });
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') lb.style.display = 'none';
+  });
+})();
+
+// ── Animate ───────────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  const w = canvas.parentElement.clientWidth;
+  const h = canvas.parentElement.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+</script>
+<!-- ── Lightbox ────────────────────────────────────────────────────────────── -->
+<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:99999;align-items:center;justify-content:center;cursor:zoom-out;" onclick="document.getElementById('lightbox').style.display='none';">
+  <img id="lightbox-img" src="" style="max-width:92vw;max-height:92vh;border-radius:6px;box-shadow:0 0 60px rgba(0,0,0,.8);object-fit:contain;" />
+  <div style="position:absolute;top:16px;right:20px;color:#fff;font-size:22px;cursor:pointer;opacity:.7;">&#10005;</div>
+</div>
+</body>
+</html>
